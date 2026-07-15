@@ -26,7 +26,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
-import { StageBadge } from '@/pages/CandidatesPage';
+import { StageBadge, REJECTION_REASONS } from '@/pages/CandidatesPage';
 import { useAuth } from '@/context/AuthContext';
 import { api, errMsg } from '@/lib/api';
 
@@ -49,6 +49,7 @@ export default function CandidateProfilePage() {
   const docxContainerRef = useRef(null);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
+  const [rejectCategory, setRejectCategory] = useState('');
   const [pendingStage, setPendingStage] = useState(null);
   const [notFound, setNotFound] = useState(false);
   const [jobs, setJobs] = useState([]);
@@ -143,6 +144,8 @@ export default function CandidateProfilePage() {
   const onStageChange = (stage) => {
     if (stage === 'Rejected') {
       setPendingStage(stage);
+      setRejectCategory('');
+      setRejectReason('');
       setRejectOpen(true);
     } else {
       moveStage(stage);
@@ -456,9 +459,20 @@ export default function CandidateProfilePage() {
       <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader><DialogTitle>Reject {cand.name}</DialogTitle></DialogHeader>
-          <div className="space-y-1.5">
-            <Label>Rejection reason</Label>
-            <Textarea value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder="e.g. Not a technical fit for the role" data-testid="reject-reason-textarea" />
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label>Rejection reason</Label>
+              <Select value={rejectCategory} onValueChange={setRejectCategory}>
+                <SelectTrigger data-testid="reject-reason-select"><SelectValue placeholder="Choose a reason" /></SelectTrigger>
+                <SelectContent>{REJECTION_REASONS.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            {rejectCategory === 'Not Fit' && (
+              <div className="space-y-1.5">
+                <Label>Details</Label>
+                <Textarea value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder="e.g. Not a technical fit for the role" data-testid="reject-reason-textarea" />
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRejectOpen(false)}>Cancel</Button>
@@ -466,9 +480,19 @@ export default function CandidateProfilePage() {
               variant="destructive"
               data-testid="reject-confirm-button"
               onClick={() => {
-                moveStage(pendingStage, rejectReason);
+                if (!rejectCategory) {
+                  toast.error('Please choose a rejection reason');
+                  return;
+                }
+                if (rejectCategory === 'Not Fit' && !rejectReason.trim()) {
+                  toast.error('Please provide details for Not Fit');
+                  return;
+                }
+                const finalReason = rejectCategory === 'Not Fit' ? `Not Fit: ${rejectReason.trim()}` : rejectCategory;
+                moveStage(pendingStage, finalReason);
                 setRejectOpen(false);
                 setRejectReason('');
+                setRejectCategory('');
               }}
             >
               Reject Candidate

@@ -35,6 +35,8 @@ export const StageBadge = ({ stage }) => (
   <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${STAGE_BADGE[stage] || 'bg-secondary text-foreground'}`}>{stage}</span>
 );
 
+export const REJECTION_REASONS = ['Not Fit', 'No Response', 'Offer Declined', 'Out of Budget'];
+
 export default function CandidatesPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -53,6 +55,10 @@ export default function CandidatesPage() {
   const [bulkDialog, setBulkDialog] = useState(null); // {action}
   const [bulkValue, setBulkValue] = useState('');
   const [bulkReason, setBulkReason] = useState('');
+  const [bulkRejectCategory, setBulkRejectCategory] = useState('');
+  const [kanbanReject, setKanbanReject] = useState(null);
+  const [kanbanRejectCategory, setKanbanRejectCategory] = useState('');
+  const [kanbanRejectDetail, setKanbanRejectDetail] = useState('');
 
   const isRecruiter = user?.role === 'admin' || user?.role === 'recruiter';
   const limit = view === 'kanban' ? 500 : 25;
@@ -95,6 +101,12 @@ export default function CandidatesPage() {
   const activeFilterChips = Object.entries(filters).filter(([, v]) => v !== 'all');
 
   const onMove = async (cand, stage) => {
+    if (stage === 'Rejected') {
+      setKanbanReject(cand);
+      setKanbanRejectCategory('');
+      setKanbanRejectDetail('');
+      return;
+    }
     // optimistic
     setData((d) => ({ ...d, items: d.items.map((c) => (c.id === cand.id ? { ...c, stage } : c)) }));
     try {
@@ -106,16 +118,48 @@ export default function CandidatesPage() {
     }
   };
 
+  const confirmKanbanReject = async () => {
+    if (!kanbanRejectCategory) {
+      toast.error('Please choose a rejection reason');
+      return;
+    }
+    if (kanbanRejectCategory === 'Not Fit' && !kanbanRejectDetail.trim()) {
+      toast.error('Please provide details for Not Fit');
+      return;
+    }
+    const reason = kanbanRejectCategory === 'Not Fit' ? `Not Fit: ${kanbanRejectDetail.trim()}` : kanbanRejectCategory;
+    try {
+      await api.post(`/candidates/${kanbanReject.id}/move-stage`, { stage: 'Rejected', reason });
+      toast.success(`${kanbanReject.name} moved to Rejected`);
+      setKanbanReject(null);
+      setKanbanRejectCategory('');
+      setKanbanRejectDetail('');
+      load();
+    } catch (e) {
+      toast.error(errMsg(e));
+    }
+  };
+
   const runBulk = async () => {
     const action = bulkDialog;
     const body = { candidate_ids: selected, action };
     if (action === 'move_stage') body.stage = bulkValue;
-    if (action === 'reject') body.reason = bulkReason;
     if (action === 'tag') body.tag = bulkValue;
     if (action === 'assign') body.recruiter_id = bulkValue;
     if ((action === 'move_stage' || action === 'tag' || action === 'assign') && !bulkValue) {
       toast.error('Please choose a value');
       return;
+    }
+    if (action === 'reject') {
+      if (!bulkRejectCategory) {
+        toast.error('Please choose a rejection reason');
+        return;
+      }
+      if (bulkRejectCategory === 'Not Fit' && !bulkReason.trim()) {
+        toast.error('Please provide details for Not Fit');
+        return;
+      }
+      body.reason = bulkRejectCategory === 'Not Fit' ? `Not Fit: ${bulkReason.trim()}` : bulkRejectCategory;
     }
     try {
       const r = await api.post('/candidates/bulk-action', body);
@@ -124,6 +168,7 @@ export default function CandidatesPage() {
       setBulkDialog(null);
       setBulkValue('');
       setBulkReason('');
+      setBulkRejectCategory('');
       load();
     } catch (e) {
       toast.error(errMsg(e));
@@ -259,7 +304,7 @@ export default function CandidatesPage() {
             <Button size="sm" variant="outline" className="bg-card" onClick={() => setBulkDialog('move_stage')} data-testid="bulk-move-stage-button">Move Stage</Button>
             <Button size="sm" variant="outline" className="bg-card" onClick={() => setBulkDialog('tag')} data-testid="bulk-tag-button">Tag</Button>
             <Button size="sm" variant="outline" className="bg-card" onClick={() => setBulkDialog('assign')} data-testid="bulk-assign-button">Assign</Button>
-            <Button size="sm" variant="destructive" onClick={() => setBulkDialog('reject')} data-testid="bulk-reject-button">Reject</Button>
+            <Button size="sm" variant="destructive" onClick={() => { setBulkRejectCategory(''); setBulkReason(''); setBulkDialog('reject'); }} data-testid="bulk-reject-button">Reject</Button>
             {user?.role === 'admin' && (
               <Button size="sm" variant="destructive" onClick={() => setBulkDialog('delete')} data-testid="bulk-delete-button">Delete</Button>
             )}
@@ -379,9 +424,20 @@ export default function CandidatesPage() {
               </Select>
             )}
             {bulkDialog === 'reject' && (
-              <div className="space-y-1.5">
-                <Label>Rejection reason</Label>
-                <Textarea value={bulkReason} onChange={(e) => setBulkReason(e.target.value)} placeholder="e.g. Not a technical fit" data-testid="bulk-reject-reason" />
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label>Rejection reason</Label>
+                  <Select value={bulkRejectCategory} onValueChange={setBulkRejectCategory}>
+                    <SelectTrigger data-testid="bulk-reject-reason-select"><SelectValue placeholder="Choose a reason" /></SelectTrigger>
+                    <SelectContent>{REJECTION_REASONS.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                {bulkRejectCategory === 'Not Fit' && (
+                  <div className="space-y-1.5">
+                    <Label>Details</Label>
+                    <Textarea value={bulkReason} onChange={(e) => setBulkReason(e.target.value)} placeholder="e.g. Not a technical fit for the role" data-testid="bulk-reject-detail-textarea" />
+                  </div>
+                )}
               </div>
             )}
             {bulkDialog === 'delete' && (
@@ -399,6 +455,32 @@ export default function CandidatesPage() {
             >
               {bulkDialog === 'delete' ? 'Delete' : 'Confirm'}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Kanban drag-to-Rejected dialog */}
+      <Dialog open={!!kanbanReject} onOpenChange={(o) => !o && setKanbanReject(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle>Reject {kanbanReject?.name}</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label>Rejection reason</Label>
+              <Select value={kanbanRejectCategory} onValueChange={setKanbanRejectCategory}>
+                <SelectTrigger data-testid="kanban-reject-reason-select"><SelectValue placeholder="Choose a reason" /></SelectTrigger>
+                <SelectContent>{REJECTION_REASONS.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            {kanbanRejectCategory === 'Not Fit' && (
+              <div className="space-y-1.5">
+                <Label>Details</Label>
+                <Textarea value={kanbanRejectDetail} onChange={(e) => setKanbanRejectDetail(e.target.value)} placeholder="e.g. Not a technical fit for the role" data-testid="kanban-reject-detail-textarea" />
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setKanbanReject(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={confirmKanbanReject} data-testid="kanban-reject-confirm-button">Reject Candidate</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
