@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Briefcase, MapPin, Pencil, Plus, Users } from 'lucide-react';
+import { Briefcase, MapPin, Pencil, Plus, Trash2, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -100,6 +100,20 @@ export default function JobsPage() {
     }
   };
 
+  const deleteJob = async (job) => {
+    const msg = job.candidate_count > 0
+      ? `Delete "${job.title}"? It has ${job.candidate_count} active candidate${job.candidate_count === 1 ? '' : 's'} — they will remain in the system but lose their job link. This cannot be undone.`
+      : `Delete "${job.title}"? This cannot be undone.`;
+    if (!window.confirm(msg)) return;
+    try {
+      await api.delete(`/jobs/${job.id}`);
+      toast.success('Job deleted');
+      load();
+    } catch (e) {
+      toast.error(errMsg(e, 'Could not delete job'));
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -149,6 +163,18 @@ export default function JobsPage() {
                 {j.status === 'open' && <Button size="sm" variant="ghost" onClick={() => setStatus(j, 'on_hold')}>Hold</Button>}
                 {j.status !== 'closed' && <Button size="sm" variant="ghost" onClick={() => setStatus(j, 'closed')}>Close</Button>}
                 {j.status !== 'open' && <Button size="sm" variant="ghost" onClick={() => setStatus(j, 'open')}>Reopen</Button>}
+                {user?.role === 'admin' && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-destructive hover:text-destructive ml-auto"
+                    onClick={() => deleteJob(j)}
+                    aria-label={`Delete ${j.title}`}
+                    data-testid={`job-delete-${j.id}`}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>
