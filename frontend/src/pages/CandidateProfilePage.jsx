@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -16,6 +16,7 @@ import {
   Tag,
   Trash2,
 } from 'lucide-react';
+import { renderAsync } from 'docx-preview';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -43,6 +44,9 @@ export default function CandidateProfilePage() {
   const [note, setNote] = useState('');
   const [noteType, setNoteType] = useState('note');
   const [resumeUrl, setResumeUrl] = useState(null);
+  const [resumeType, setResumeType] = useState(null); // null | 'loading' | 'pdf' | 'docx' | 'unsupported' | 'error'
+  const [resumeBlob, setResumeBlob] = useState(null);
+  const docxContainerRef = useRef(null);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
   const [pendingStage, setPendingStage] = useState(null);
@@ -71,17 +75,55 @@ export default function CandidateProfilePage() {
 
   useEffect(() => {
     let url;
+    let cancelled = false;
+    setResumeUrl(null);
+    setResumeBlob(null);
+    setResumeType(cand?.resume_file_id ? 'loading' : null);
     if (cand?.resume_file_id) {
       api
         .get(`/files/${cand.resume_file_id}`, { responseType: 'blob' })
         .then((r) => {
-          url = URL.createObjectURL(new Blob([r.data], { type: r.headers['content-type'] }));
-          setResumeUrl(url);
+          if (cancelled) return;
+          const contentType = (r.headers['content-type'] || '').toLowerCase();
+          const dispo = r.headers['content-disposition'] || '';
+          const nameMatch = dispo.match(/filename="?([^"]+)"?/i);
+          const ext = (nameMatch?.[1] || '').toLowerCase().split('.').pop();
+          const blob = new Blob([r.data], { type: r.headers['content-type'] });
+          if (contentType.includes('pdf') || ext === 'pdf') {
+            url = URL.createObjectURL(blob);
+            setResumeUrl(url);
+            setResumeType('pdf');
+          } else if (contentType.includes('word') || contentType.includes('officedocument') || ext === 'docx' || ext === 'doc') {
+            setResumeBlob(blob);
+            setResumeType('docx');
+          } else {
+            url = URL.createObjectURL(blob);
+            setResumeUrl(url);
+            setResumeType('unsupported');
+          }
         })
-        .catch(() => {});
+        .catch(() => !cancelled && setResumeType('error'));
     }
-    return () => url && URL.revokeObjectURL(url);
+    return () => {
+      cancelled = true;
+      url && URL.revokeObjectURL(url);
+    };
   }, [cand?.resume_file_id]);
+
+  // Render DOCX preview into its container once both the blob and the DOM node are ready
+  useEffect(() => {
+    if (resumeType === 'docx' && resumeBlob && docxContainerRef.current) {
+      const container = docxContainerRef.current;
+      container.innerHTML = '';
+      renderAsync(resumeBlob, container, container, {
+        className: 'docx-preview',
+        inWrapper: true,
+        ignoreWidth: true,
+        ignoreHeight: true,
+        breakPages: false,
+      }).catch(() => setResumeType('docx-error'));
+    }
+  }, [resumeType, resumeBlob]);
 
   const moveStage = async (stage, reason) => {
     try {
@@ -272,9 +314,24 @@ export default function CandidateProfilePage() {
             </CardHeader>
             <CardContent>
               {!cand.resume_file_id && <p className="text-sm text-muted-foreground py-4 text-center">No resume on file for this candidate.</p>}
-              {cand.resume_file_id && !resumeUrl && <p className="text-sm text-muted-foreground py-4 text-center">Loading preview...</p>}
-              {resumeUrl && (
+              {resumeType === 'loading' && <p className="text-sm text-muted-foreground py-4 text-center">Loading preview...</p>}
+              {resumeType === 'error' && <p className="text-sm text-destructive py-4 text-center">Could not load resume preview. Try downloading instead.</p>}
+              {resumeType === 'pdf' && resumeUrl && (
                 <iframe title="Resume preview" src={resumeUrl} className="w-full h-[480px] rounded-lg border border-border bg-white" />
+              )}
+              {(resumeType === 'docx' || resumeType === 'docx-error') && (
+                <div
+                  ref={docxContainerRef}
+                  data-testid="candidate-resume-docx-preview"
+                  className="docx-preview-wrapper w-full h-[480px] overflow-auto rounded-lg border border-border bg-white p-4 text-black"
+                >
+                  {resumeType === 'docx-error' && (
+                    <p className="text-sm text-destructive py-4 text-center">Could not render this Word document. Try downloading instead.</p>
+                  )}
+                </div>
+              )}
+              {resumeType === 'unsupported' && (
+                <p className="text-sm text-muted-foreground py-4 text-center">Preview is not available for this file type — use Download instead.</p>
               )}
             </CardContent>
           </Card>

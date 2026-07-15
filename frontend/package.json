@@ -42,6 +42,7 @@
     "cra-template": "1.2.0",
     "date-fns": "^4.4.0",
     "dayjs": "1.11.13",
+    "docx-preview": "^0.4.0",
     "embla-carousel-react": "8.6.0",
     "framer-motion": "^12.42.2",
     "input-otp": "1.4.2",

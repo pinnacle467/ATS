@@ -187,16 +187,27 @@
 ##         -working: "NA"
 ##         -agent: "main"
 ##         -comment: "Added 'Notice Period' column (hidden on small screens) to the candidates table, a labeled row with Clock icon on the candidate profile page, a text input in the Add Candidate manual/AI-parsed-review form, and the mapping label in the Excel/CSV import wizard. All wire through the notice_period field added to the backend models."
+##   - task: "BUG FIX: DOCX resume preview not rendering on candidate profile page (only PDF worked)"
+##     implemented: true
+##     working: "NA"
+##     file: "frontend/src/pages/CandidateProfilePage.jsx, frontend/package.json"
+##     stuck_count: 0
+##     priority: "high"
+##     needs_retesting: true
+##     status_history:
+##         -working: "NA"
+##         -agent: "main"
+##         -comment: "USER REPORTED BUG: On the candidate profile page, resumes uploaded as .docx did not open/preview (unlike .pdf which worked fine). Root cause: the resume preview was a single <iframe src={blobUrl}> - browsers have a native built-in PDF renderer for iframes, but there is NO native browser renderer for Word/.docx documents, so the iframe showed blank/broken for docx files. Note: the app only accepts .pdf and .docx uploads (AddCandidatePage.jsx accept filter and resume_parser.py extract_text_from_bytes) - there is no legacy .doc (pre-2007 binary Word) support anywhere in the app, so 'the .doc format' in the user report refers to .docx. FIX: installed docx-preview (v0.4.0) npm package which parses OOXML .docx client-side into HTML. Restructured the resume-fetch effect in CandidateProfilePage.jsx to detect file type from response Content-Type header + Content-Disposition filename extension: if PDF -> keep existing iframe approach (unchanged); if DOCX -> store blob and render via docx-preview's renderAsync() into a dedicated container div (ignoreWidth/ignoreHeight so it reflows to fit the card); anything else -> graceful 'preview not available, use Download' message. Added loading/error states per type. Frontend restarted, webpack compiled successfully (only harmless docx-preview source-map warnings). NOT YET VERIFIED IN BROWSER - needs testing agent to upload a .docx resume via Add Candidate flow and confirm it renders readable content on the candidate profile page, AND confirm a .pdf resume still previews correctly (regression check)."
 
 ## metadata:
 ##   created_by: "main_agent"
 ##   version: "1.0"
-##   test_sequence: 4
+##   test_sequence: 5
 ##   run_ui: false
 
 ## test_plan:
 ##   current_focus:
-##     - "Add notice_period field to candidate model, resume parser schema, and Excel/CSV import mapping"
+##     - "BUG FIX: DOCX resume preview not rendering on candidate profile page (only PDF worked)"
 ##   stuck_tasks: []
 ##   test_all: false
 ##   test_priority: "high_first"
@@ -208,3 +219,5 @@
 ##     -message: "✅ BULK DELETE FEATURE FULLY TESTED AND WORKING. All 5 test scenarios from review request passed: (1) Recruiter correctly blocked with 403 on bulk delete attempt. (2) Admin successfully bulk deleted 2 candidates, both return 404 after deletion, notes also removed. (3) All other bulk actions verified working: move_stage, tag, assign, reject all function correctly with proper data updates. (4) Reject action correctly sets stage=Rejected, status=rejected, and rejection_reason. (5) Unrelated endpoints (dashboard/stats, jobs, imports/template) all working - no regressions. Backend implementation is production-ready. 100% test pass rate (62/62 tests). Ready for user acceptance testing or deployment."
 ##     -agent: "main"
 ##     -message: "New round of changes to verify: (1) notice_period field end-to-end — create candidate (POST /api/candidates) with notice_period set, verify returned on GET list + GET by id, verify PUT can update it, verify resume parse endpoints still function normally, verify import preview/commit maps a 'Notice Period' style column correctly (use /app/tests/fixtures/import_test.xlsx or add a Notice Period column to a copy). (2) Admin rename — already verified directly via mongosh migration (220 docs updated, 0 remaining 'Alex Morgan' matches); please also confirm via API: login as admin@ats.com/Admin@123 and check the auth/me or login response returns name 'Abhijeet Kang'. Note: Jobs page delete button is a frontend-only addition on a pre-existing backend endpoint — not this round's focus but flag if any regression is noticed on GET/DELETE /api/jobs."
+##     -agent: "main"
+##     -message: "BUG FIX to verify now (frontend-only, no backend change): candidate profile page resume preview. Previously only PDF resumes rendered in the preview iframe; DOCX resumes appeared blank/broken because browsers can't natively render Word docs in an iframe. Added client-side docx-preview library so DOCX now renders as HTML in a dedicated container, auto-detected via response content-type/filename. Please test end-to-end via the UI: (1) Login as admin@ats.com/Admin@123 or recruiter@ats.com/Recruit@123. (2) Go to Add Candidate, upload /app/tests/fixtures/resume_priya_patel.docx (single upload), let AI parsing complete, assign to any open job, save the candidate. (3) Open that candidate's profile page and confirm the Resume card shows rendered document text/content (not blank, not an error message) inside the preview area (data-testid=candidate-resume-docx-preview). (4) Also upload /app/tests/fixtures/resume_sarah_chen.pdf or resume_miguel_torres.pdf as a second candidate and confirm its PDF preview still renders correctly in the iframe as before (regression check). (5) Confirm the Download button works for both candidates and downloads the original file correctly."
