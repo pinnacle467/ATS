@@ -105,18 +105,28 @@
 ## user_problem_statement: User pulled the connected GitHub repo (pinnacle467/ATS, which is this same Sprout ATS project's mirror) into this workspace via "Pull from GitHub". This wiped backend/.env and frontend/.env (gitignored) and left the app crashing (backend: KeyError MONGO_URL). User asked main agent to rebuild the missing .env files so the imported build runs correctly.
 
 ## backend:
-##   - task: "Recreate backend/.env after GitHub import wiped it (MONGO_URL, DB_NAME, JWT_SECRET, EMERGENT_LLM_KEY, CORS_ORIGINS)"
+##   - task: "Add notice_period field to candidate model, resume parser schema, and Excel/CSV import mapping"
 ##     implemented: true
-##     working: true
-##     file: "backend/.env"
+##     working: "NA"
+##     file: "backend/routes_candidates.py, backend/resume_parser.py, backend/routes_imports.py, backend/seed.py"
 ##     stuck_count: 0
 ##     priority: "high"
 ##     needs_retesting: true
 ##     status_history:
+##         -working: "NA"
+##         -agent: "main"
+##         -comment: "User wants to see candidate notice periods on the candidates list and detail view. Added notice_period: Optional[str]=None to CandidateCreate/CandidateUpdate models (routes_candidates.py) and included it in the created candidate doc. Added notice_period to resume_parser.py's LLM JSON schema + EMPTY_PARSE dict (only filled if resume explicitly states it, otherwise null — not guessed). Added 'notice_period' to routes_imports.py TARGET_FIELDS + SYNONYMS (so Excel/CSV migration can map a Notice Period column) and to commit_import's candidate doc creation + to the downloadable template. Added sample notice_period values to seed.py demo candidates. Needs testing: POST /api/candidates with notice_period saves correctly; GET /api/candidates and GET /api/candidates/{id} return it; PUT /api/candidates/{id} can update it; resume parse endpoints don't break (notice_period just added as optional null field); import preview/commit correctly maps and stores a Notice Period column from an xlsx/csv."
+##   - task: "Rename seeded admin user 'Alex Morgan' -> 'Abhijeet Kang' (seed.py + live DB migration of users/activities/notes/audit_log)"
+##     implemented: true
+##     working: true
+##     file: "backend/seed.py"
+##     stuck_count: 0
+##     priority: "medium"
+##     needs_retesting: false
+##     status_history:
 ##         -working: true
 ##         -agent: "main"
-##         -comment: "backend/.env and frontend/.env were missing after 'Pull from GitHub' (both are gitignored at repo root .gitignore, so never pushed). Backend was crash-looping with KeyError: 'MONGO_URL'. Recreated backend/.env with MONGO_URL=mongodb://localhost:27017, DB_NAME=sprout_ats, CORS_ORIGINS=*, freshly generated JWT_SECRET, and EMERGENT_LLM_KEY fetched via emergent_integrations_manager. Recreated frontend/.env with REACT_APP_BACKEND_URL pulled from the environment's actual preview_endpoint (https://b2b011a2-c28e-4722-ace2-04a2a0b400ea.preview.emergentagent.com). Restarted backend+frontend via supervisor. Backend now starts cleanly, auto-seeds demo data (seed_if_empty), Mongo now shows populated 'sprout_ats' db. Also recreated /app/memory/test_credentials.md (also gitignored, was missing) with the 5 seeded demo accounts (admin/recruiter/interviewer roles) sourced from seed.py. Login page screenshot confirms UI renders correctly with demo one-click login buttons. Requesting backend testing agent to run full regression (auth, resumes, jobs, candidates, interviews, dashboard, admin, imports) since this is effectively validating the freshly-seeded/restored environment end-to-end, not new code changes."
-
+##         -comment: "Updated seed.py admin user name for future fresh deployments, and ran a one-off Mongo migration on the live 'sprout_ats' db renaming 'Alex Morgan' -> 'Abhijeet Kang' across users.name, activities.actor_name, notes.author_name, and audit_log.actor_name (220 documents updated total, verified 0 remaining matches). No code path elsewhere hardcodes this name (actor/author names are always read dynamically from the users collection at write time), so this fully addresses the rename including historical activity feed / audit log entries. Verified directly via mongosh query — not re-tested via testing agent since it's a data-only change with no new logic."
 ##   - task: "Bulk delete candidates (admin-only) via POST /candidates/bulk-action with action=delete"
 ##     implemented: true
 ##     working: true
@@ -155,16 +165,38 @@
 ##         -working: "NA"
 ##         -agent: "main"
 ##         -comment: "Added admin-only 'Delete' button to the candidates bulk-actions bar (shown when rows are selected in table view), opening a confirmation dialog warning the action is permanent before calling POST /candidates/bulk-action with action=delete."
+##   - task: "Delete button on Jobs page (admin-only), calling existing DELETE /api/jobs/{id}"
+##     implemented: true
+##     working: "NA"
+##     file: "frontend/src/pages/JobsPage.jsx"
+##     stuck_count: 0
+##     priority: "medium"
+##     needs_retesting: false
+##     status_history:
+##         -working: "NA"
+##         -agent: "main"
+##         -comment: "Backend DELETE /api/jobs/{job_id} already existed (admin-only) but had no UI trigger. Added a Trash2 icon button (admin-only) to each job card with a window.confirm() warning (mentions active candidate count if any) before calling the delete API. Frontend-only change; backend endpoint unchanged. A prior automated frontend test run for this was requested but the sub-agent stopped before executing any steps — not yet independently verified via testing agent."
+##   - task: "Display notice_period on Candidates table (new column) and Candidate Profile page (Contact & Details card); capture it in Add Candidate manual/parsed-review form"
+##     implemented: true
+##     working: "NA"
+##     file: "frontend/src/pages/CandidatesPage.jsx, frontend/src/pages/CandidateProfilePage.jsx, frontend/src/pages/AddCandidatePage.jsx, frontend/src/pages/ImportCandidatesPage.jsx"
+##     stuck_count: 0
+##     priority: "high"
+##     needs_retesting: false
+##     status_history:
+##         -working: "NA"
+##         -agent: "main"
+##         -comment: "Added 'Notice Period' column (hidden on small screens) to the candidates table, a labeled row with Clock icon on the candidate profile page, a text input in the Add Candidate manual/AI-parsed-review form, and the mapping label in the Excel/CSV import wizard. All wire through the notice_period field added to the backend models."
 
 ## metadata:
 ##   created_by: "main_agent"
 ##   version: "1.0"
-##   test_sequence: 3
+##   test_sequence: 4
 ##   run_ui: false
 
 ## test_plan:
 ##   current_focus:
-##     - "Bulk delete candidates (admin-only) via POST /candidates/bulk-action with action=delete"
+##     - "Add notice_period field to candidate model, resume parser schema, and Excel/CSV import mapping"
 ##   stuck_tasks: []
 ##   test_all: false
 ##   test_priority: "high_first"
@@ -174,3 +206,5 @@
 ##     -message: "Previous recovery task (recreating .env after GitHub import) is done and backend/frontend are healthy with seeded demo data. New change: added bulk-delete support to POST /api/candidates/bulk-action (action='delete', admin-only, deletes candidates + their notes) and surfaced the pre-existing Excel/CSV import flow with a visible button on the Candidates page (it was fully built and functional before but had zero UI entry point). Please test: login as admin@ats.com/Admin@123, select multiple candidates in table view, bulk delete them, confirm they're gone and notes deleted; then login as recruiter@ats.com/Recruit@123 and confirm bulk delete is rejected with 403 (Delete button shouldn't even show for recruiter in UI, but also verify API-level 403). Also verify existing bulk actions (move_stage/reject/tag/assign) and the import preview/commit endpoints still work unaffected."
 ##     -agent: "testing"
 ##     -message: "✅ BULK DELETE FEATURE FULLY TESTED AND WORKING. All 5 test scenarios from review request passed: (1) Recruiter correctly blocked with 403 on bulk delete attempt. (2) Admin successfully bulk deleted 2 candidates, both return 404 after deletion, notes also removed. (3) All other bulk actions verified working: move_stage, tag, assign, reject all function correctly with proper data updates. (4) Reject action correctly sets stage=Rejected, status=rejected, and rejection_reason. (5) Unrelated endpoints (dashboard/stats, jobs, imports/template) all working - no regressions. Backend implementation is production-ready. 100% test pass rate (62/62 tests). Ready for user acceptance testing or deployment."
+##     -agent: "main"
+##     -message: "New round of changes to verify: (1) notice_period field end-to-end — create candidate (POST /api/candidates) with notice_period set, verify returned on GET list + GET by id, verify PUT can update it, verify resume parse endpoints still function normally, verify import preview/commit maps a 'Notice Period' style column correctly (use /app/tests/fixtures/import_test.xlsx or add a Notice Period column to a copy). (2) Admin rename — already verified directly via mongosh migration (220 docs updated, 0 remaining 'Alex Morgan' matches); please also confirm via API: login as admin@ats.com/Admin@123 and check the auth/me or login response returns name 'Abhijeet Kang'. Note: Jobs page delete button is a frontend-only addition on a pre-existing backend endpoint — not this round's focus but flag if any regression is noticed on GET/DELETE /api/jobs."

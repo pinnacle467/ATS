@@ -23,7 +23,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const emptyDraft = () => ({
   name: '', email: '', phone: '', current_title: '', current_company: '', location: '',
   experience: [], education: [], skills: [], job_id: '', source: 'career_site', tags: [],
-  resume_file_id: null, low_confidence_fields: [], notes: '',
+  resume_file_id: null, low_confidence_fields: [], notice_period: '', notes: '',
 });
 
 function parsedToDraft(result) {
@@ -39,6 +39,7 @@ function parsedToDraft(result) {
     experience: p.experience || [],
     education: p.education || [],
     skills: p.skills || [],
+    notice_period: p.notice_period || '',
     resume_file_id: result.file_id,
     low_confidence_fields: result.low_confidence_fields || [],
     _filename: result.filename,
@@ -98,6 +99,7 @@ function DraftForm({ draft, onChange, jobs, tags, onSave, onDiscard, saving, ind
           {field('location', 'Location', 'San Francisco, CA')}
           {field('current_title', 'Current Title', 'Software Engineer')}
           {field('current_company', 'Current Company', 'Acme Inc.')}
+          {field('notice_period', 'Notice Period', 'e.g. 30 days, Immediate')}
         </div>
 
         <div className="grid sm:grid-cols-2 gap-3">
@@ -282,7 +284,7 @@ export default function AddCandidatePage() {
     try {
       const body = { ...d };
       delete body._filename;
-      ['email', 'phone', 'current_title', 'current_company', 'location', 'notes'].forEach((k) => {
+      ['email', 'phone', 'current_title', 'current_company', 'location', 'notice_period', 'notes'].forEach((k) => {
         if (!body[k]) body[k] = null;
       });
       const r = await api.post('/candidates', body);

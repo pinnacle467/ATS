@@ -18,7 +18,7 @@ async def seed_if_empty():
 
     # ---- Users ----
     users = [
-        {'id': new_id(), 'name': 'Alex Morgan', 'email': 'admin@ats.com', 'password_hash': hash_password('Admin@123'), 'role': 'admin', 'title': 'Head of Talent', 'active': True, 'last_login': None, 'created_at': now_iso()},
+        {'id': new_id(), 'name': 'Abhijeet Kang', 'email': 'admin@ats.com', 'password_hash': hash_password('Admin@123'), 'role': 'admin', 'title': 'Head of Talent', 'active': True, 'last_login': None, 'created_at': now_iso()},
         {'id': new_id(), 'name': 'Rachel Kim', 'email': 'recruiter@ats.com', 'password_hash': hash_password('Recruit@123'), 'role': 'recruiter', 'title': 'Senior Recruiter', 'active': True, 'last_login': None, 'created_at': now_iso()},
         {'id': new_id(), 'name': 'David Lee', 'email': 'interviewer@ats.com', 'password_hash': hash_password('Interview@123'), 'role': 'interviewer', 'title': 'Engineering Manager', 'active': True, 'last_login': None, 'created_at': now_iso()},
         {'id': new_id(), 'name': 'Jane Foster', 'email': 'jane@ats.com', 'password_hash': hash_password('Jane@123'), 'role': 'recruiter', 'title': 'Recruiter', 'active': True, 'last_login': None, 'created_at': now_iso()},
@@ -64,6 +64,7 @@ async def seed_if_empty():
     backend_job, design_job, pm_job, sales_job, fe_job = jobs
 
     # ---- Candidates ----
+    notice_periods = ['Immediate', '15 days', '30 days', '30 days', '60 days', '2 weeks', '1 month', '90 days', 'Immediate', None]
     cands_data = [
         # name, email, phone, title, company, location, job, stage, source, skills, tags, days_ago
         ('Sarah Chen', 'sarah.chen@example.com', '(415) 555-0192', 'Senior Software Engineer', 'CloudScale Inc.', 'San Francisco, CA', backend_job, 'Interview', 'referral', ['Python', 'Go', 'FastAPI', 'PostgreSQL', 'Kubernetes'], ['strong-fit', 'referral'], 18),
@@ -84,7 +85,7 @@ async def seed_if_empty():
         ('Marcus Johnson', 'marcus.johnson@example.com', '(510) 555-0130', 'DevOps Engineer', 'InfraCore', 'Oakland, CA', backend_job, 'Hired', 'linkedin', ['Terraform', 'Kubernetes', 'CI/CD', 'AWS'], [], 70),
     ]
     candidates = []
-    for name, email, phone, title, company, loc, job, stage, source, skills, tags, days_ago in cands_data:
+    for idx, (name, email, phone, title, company, loc, job, stage, source, skills, tags, days_ago) in enumerate(cands_data):
         applied = now - timedelta(days=days_ago)
         status = 'active'
         hired_at = None
@@ -103,6 +104,7 @@ async def seed_if_empty():
             'education': [{'school': 'State University', 'degree': 'B.S.', 'start_date': '2013', 'end_date': '2017'}],
             'skills': skills, 'job_id': job['id'], 'stage': stage, 'source': source, 'recruiter_id': rec_id,
             'tags': tags, 'resume_file_id': None, 'low_confidence_fields': ['phone'] if phone is None else [],
+            'notice_period': notice_periods[idx % len(notice_periods)],
             'status': status, 'rejection_reason': rejection_reason, 'applied_at': iso(applied), 'hired_at': hired_at,
             'created_at': iso(applied), 'updated_at': now_iso(),
         })

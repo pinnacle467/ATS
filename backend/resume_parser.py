@@ -16,6 +16,7 @@ JSON schema:
   "current_title": string|null,
   "current_company": string|null,
   "location": string|null,
+  "notice_period": string|null,
   "experience": [{"company": string, "title": string, "start_date": string|null, "end_date": string|null, "description": string|null}],
   "education": [{"school": string, "degree": string|null, "start_date": string|null, "end_date": string|null}],
   "skills": [string],
@@ -25,6 +26,7 @@ JSON schema:
 Rules:
 - If a field cannot be confidently determined, set it to null (or [] for arrays). NEVER guess or fabricate.
 - confidence values are 0.0-1.0 reflecting how certain you are of each extracted top-level field. Use 0.0 for null fields.
+- notice_period: only fill if the resume explicitly states an availability/notice period (e.g. "Notice period: 30 days", "Available immediately"). Otherwise null — do not guess.
 - Dates as human-readable strings, e.g. "Mar 2021", "2019", "Present".
 - Skills: individual skill strings, deduplicated.
 - Output raw JSON only."""
@@ -65,7 +67,7 @@ def _strip_fences(raw: str) -> str:
 
 EMPTY_PARSE = {
     'name': None, 'email': None, 'phone': None, 'current_title': None,
-    'current_company': None, 'location': None, 'experience': [], 'education': [],
+    'current_company': None, 'location': None, 'notice_period': None, 'experience': [], 'education': [],
     'skills': [], 'confidence': {},
 }
 

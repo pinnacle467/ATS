@@ -5,6 +5,7 @@ import {
   Briefcase,
   Building2,
   CalendarDays,
+  Clock,
   Download,
   FileText,
   GraduationCap,
@@ -204,6 +205,10 @@ export default function CandidateProfilePage() {
               <div className="flex items-center gap-2"><MapPin className="h-4 w-4 text-muted-foreground" />{cand.location || <span className="text-muted-foreground">No location</span>}</div>
               <div className="flex items-center gap-2"><Briefcase className="h-4 w-4 text-muted-foreground" />{cand.job?.title || <span className="text-muted-foreground">No job assigned</span>}</div>
               <div className="flex items-center gap-2"><Star className="h-4 w-4 text-muted-foreground" />Recruiter: {cand.recruiter?.name || '—'}</div>
+              <div className="flex items-center gap-2" data-testid="candidate-notice-period">
+                <Clock className="h-4 w-4 text-muted-foreground" />
+                Notice Period: {cand.notice_period || <span className="text-muted-foreground">Not specified</span>}
+              </div>
               <div className="flex items-center gap-2 flex-wrap">
                 <Tag className="h-4 w-4 text-muted-foreground" />
                 {(cand.tags || []).length === 0 && <span className="text-muted-foreground">No tags</span>}

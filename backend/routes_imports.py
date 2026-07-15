@@ -19,7 +19,7 @@ MAX_ROWS = 5000
 
 TARGET_FIELDS = [
     'name', 'email', 'phone', 'current_title', 'current_company', 'location',
-    'skills', 'job', 'stage', 'source', 'tags', 'applied_at', 'notes',
+    'skills', 'job', 'stage', 'source', 'tags', 'applied_at', 'notice_period', 'notes',
 ]
 
 # header synonyms for auto-mapping (checked in order: exact match first, then contains)
@@ -36,6 +36,7 @@ SYNONYMS = {
     'source': ['source', 'channel', 'referral source', 'sourced from', 'application source'],
     'tags': ['tags', 'labels', 'tag'],
     'applied_at': ['applied date', 'application date', 'date applied', 'applied on', 'applied at', 'date of application', 'date'],
+    'notice_period': ['notice period', 'notice', 'availability', 'available from', 'availability to join'],
     'notes': ['notes', 'comments', 'remarks', 'note', 'comment'],
 }
 
@@ -151,11 +152,11 @@ async def download_template(user: dict = Depends(require_roles('admin', 'recruit
     ws = wb.active
     ws.title = 'Candidates'
     headers = ['Name', 'Email', 'Phone', 'Current Title', 'Current Company', 'Location',
-               'Skills', 'Job Applied', 'Stage', 'Source', 'Tags', 'Applied Date', 'Notes']
+               'Skills', 'Job Applied', 'Stage', 'Source', 'Tags', 'Applied Date', 'Notice Period', 'Notes']
     ws.append(headers)
     ws.append(['Jane Doe', 'jane.doe@example.com', '(555) 123-4567', 'Software Engineer', 'Acme Inc.',
                'San Francisco, CA', 'Python; React; SQL', 'Senior Backend Engineer', 'Applied',
-               'LinkedIn', 'remote-ok; senior', '2026-01-15', 'Strong referral from team lead'])
+               'LinkedIn', 'remote-ok; senior', '2026-01-15', '30 days', 'Strong referral from team lead'])
     for i, h in enumerate(headers, 1):
         ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = max(14, len(h) + 4)
     buf = io.BytesIO()
@@ -327,6 +328,7 @@ async def commit_import(import_id: str, body: CommitBody, user: dict = Depends(r
             'tags': _split_list(vals.get('tags', '')),
             'resume_file_id': None,
             'low_confidence_fields': [],
+            'notice_period': vals.get('notice_period') or None,
             'status': status,
             'rejection_reason': rejection_reason,
             'applied_at': applied_at,

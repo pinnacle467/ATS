@@ -24,6 +24,7 @@ const FIELD_LABELS = {
   source: 'Source',
   tags: 'Tags',
   applied_at: 'Applied Date',
+  notice_period: 'Notice Period',
   notes: 'Notes',
 };
 

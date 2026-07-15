@@ -290,16 +290,17 @@ export default function CandidatesPage() {
                 <TableHead>Stage</TableHead>
                 <TableHead className="hidden md:table-cell">Source</TableHead>
                 <TableHead className="hidden md:table-cell">Recruiter</TableHead>
+                <TableHead className="hidden lg:table-cell">Notice Period</TableHead>
                 <TableHead className="hidden lg:table-cell">Tags</TableHead>
                 <TableHead className="hidden lg:table-cell">Applied</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && (
-                <TableRow><TableCell colSpan={8} className="text-center py-10 text-muted-foreground">Loading candidates...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={9} className="text-center py-10 text-muted-foreground">Loading candidates...</TableCell></TableRow>
               )}
               {!loading && data.items.length === 0 && (
-                <TableRow><TableCell colSpan={8} className="text-center py-10 text-muted-foreground">No candidates found. Try adjusting filters.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={9} className="text-center py-10 text-muted-foreground">No candidates found. Try adjusting filters.</TableCell></TableRow>
               )}
               {!loading && data.items.map((c) => (
                 <TableRow key={c.id} className="cursor-pointer" data-testid={`candidate-row-${c.id}`} onClick={() => navigate(`/candidates/${c.id}`)}>
@@ -321,6 +322,7 @@ export default function CandidatesPage() {
                   <TableCell><StageBadge stage={c.stage} /></TableCell>
                   <TableCell className="hidden md:table-cell text-sm capitalize">{(c.source || '').replace('_', ' ')}</TableCell>
                   <TableCell className="hidden md:table-cell text-sm">{c.recruiter_name || '—'}</TableCell>
+                  <TableCell className="hidden lg:table-cell text-sm">{c.notice_period || '—'}</TableCell>
                   <TableCell className="hidden lg:table-cell">
                     <div className="flex flex-wrap gap-1">
                       {(c.tags || []).slice(0, 2).map((t) => <Badge key={t} variant="secondary" className="text-[10px]">{t}</Badge>)}

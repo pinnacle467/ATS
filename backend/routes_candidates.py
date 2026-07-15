@@ -30,6 +30,7 @@ class CandidateCreate(BaseModel):
     tags: list[str] = []
     resume_file_id: Optional[str] = None
     low_confidence_fields: list[str] = []
+    notice_period: Optional[str] = None
     notes: Optional[str] = None
 
 
@@ -48,6 +49,7 @@ class CandidateUpdate(BaseModel):
     recruiter_id: Optional[str] = None
     tags: Optional[list[str]] = None
     low_confidence_fields: Optional[list[str]] = None
+    notice_period: Optional[str] = None
 
 
 class StageMove(BaseModel):
@@ -201,6 +203,7 @@ async def create_candidate(body: CandidateCreate, user: dict = Depends(require_r
         'tags': body.tags,
         'resume_file_id': body.resume_file_id,
         'low_confidence_fields': body.low_confidence_fields,
+        'notice_period': body.notice_period,
         'status': 'active',
         'rejection_reason': None,
         'applied_at': now_iso(),
