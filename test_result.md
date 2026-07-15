@@ -208,19 +208,31 @@
 ##     status_history:
 ##         -working: "NA"
 ##         -agent: "main"
-##         -comment: "User wants to click a job on the Jobs page and see how many candidates are in each pipeline stage and which specific candidates are in each stage. No backend changes needed — reused the existing GET /api/jobs/{id} (job info incl. stages array) and GET /api/candidates?job_id={id}&limit=500 (already supports job filtering, respects RBAC via _visible_query) endpoints. Added new frontend-only route /jobs/:id -> JobDetailPage.jsx which fetches both, groups candidates client-side by job.stages order, and renders one card per stage showing a count badge + scrollable list of candidate name/title rows (clickable -> navigates to /candidates/:id candidate profile). Made job cards on JobsPage.jsx clickable (navigate to /jobs/:id) while wrapping the existing Edit/Hold/Close/Reopen/Delete action-buttons row in stopPropagation so those still work without triggering navigation; also fixed the existing 'X active' button to stopPropagation + still navigate correctly. Route added to App.js (admin/recruiter only, matching existing Jobs page restriction). Lint clean, webpack compiled successfully. NOT YET VERIFIED IN BROWSER - needs testing agent to click into a job with candidates in multiple stages (e.g. the seeded 'Senior Backend Engineer' job) and confirm stage counts + candidate names match reality, and clicking a candidate navigates to their profile."
+##         -comment: "User wants to click a job on the Jobs page and see how many candidates are in each pipeline stage and which specific candidates are in each stage. No backend changes needed — reused the existing GET /api/jobs/{id} (job info incl. stages array) and GET /api/candidates?job_id={id}&limit=500 (already supports job filtering, respects RBAC via _visible_query) endpoints. Added new frontend-only route /jobs/:id -> JobDetailPage.jsx which fetches both, groups candidates client-side by job.stages order, and renders one card per stage showing a count badge + scrollable list of candidate name/title rows (clickable -> navigates to /candidates/:id candidate profile). Made job cards on JobsPage.jsx clickable (navigate to /jobs/:id) while wrapping the existing Edit/Hold/Close/Reopen/Delete action-buttons row in stopPropagation so those still work without triggering navigation; also fixed the existing 'X active' button to stopPropagation + still navigate correctly. Route added to App.js (admin/recruiter only, matching existing Jobs page restriction). Lint clean, webpack compiled successfully. Testing agent has been unable to execute browser steps across 3 attempts (interrupted before starting each time) — remains unverified in browser."
+##   - task: "Allow editing a candidate's assigned job after creation (Contact & Details card, admin/recruiter only)"
+##     implemented: true
+##     working: "NA"
+##     file: "frontend/src/pages/CandidateProfilePage.jsx"
+##     stuck_count: 0
+##     priority: "high"
+##     needs_retesting: true
+##     status_history:
+##         -working: "NA"
+##         -agent: "main"
+##         -comment: "User wants to change a candidate's job role assignment after upload/creation. Backend PUT /api/candidates/{id} already accepted job_id in its CandidateUpdate model (no backend change needed). Added a jobs list fetch (GET /api/jobs, admin/recruiter only) to CandidateProfilePage.jsx, and replaced the previously read-only job title text in the Contact & Details card with an editable Select (data-testid=candidate-job-select) for admin/recruiter (interviewers still see read-only text). On change: PUT /api/candidates/{id} {job_id: newId}; then if the candidate's current pipeline stage name does not exist in the new job's stages list, automatically calls POST /candidates/{id}/move-stage with the new job's first stage (keeps data consistent instead of leaving an orphaned stage name); reloads candidate data (which also refreshes the stage-select options from the new job). Lint clean (only pre-existing unrelated warning), webpack compiled successfully. NOT YET VERIFIED - needs testing agent: open any candidate profile as admin/recruiter, change the Job select to a different job, confirm success toast, confirm job title label and stage badge/options update to reflect the new job, and reload page to confirm persistence."
 
 ## metadata:
 ##   created_by: "main_agent"
 ##   version: "1.0"
-##   test_sequence: 6
+##   test_sequence: 7
 ##   run_ui: false
 
 ## test_plan:
 ##   current_focus:
+##     - "Allow editing a candidate's assigned job after creation (Contact & Details card, admin/recruiter only)"
+##   stuck_tasks:
 ##     - "BUG FIX: DOCX resume preview not rendering on candidate profile page (only PDF worked)"
 ##     - "New page: Job pipeline detail view (click a job on /jobs to see candidate counts + candidate lists per pipeline stage)"
-##   stuck_tasks: []
 ##   test_all: false
 ##   test_priority: "high_first"
 

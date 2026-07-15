@@ -51,6 +51,7 @@ export default function CandidateProfilePage() {
   const [rejectReason, setRejectReason] = useState('');
   const [pendingStage, setPendingStage] = useState(null);
   const [notFound, setNotFound] = useState(false);
+  const [jobs, setJobs] = useState([]);
 
   const isRecruiter = user?.role === 'admin' || user?.role === 'recruiter';
 
@@ -72,6 +73,10 @@ export default function CandidateProfilePage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (isRecruiter) api.get('/jobs').then((r) => setJobs(r.data || [])).catch(() => {});
+  }, [isRecruiter]);
 
   useEffect(() => {
     let url;
@@ -141,6 +146,22 @@ export default function CandidateProfilePage() {
       setRejectOpen(true);
     } else {
       moveStage(stage);
+    }
+  };
+
+  const changeJob = async (newJobId) => {
+    if (!newJobId || newJobId === cand.job_id) return;
+    try {
+      await api.put(`/candidates/${id}`, { job_id: newJobId });
+      const newJob = jobs.find((j) => j.id === newJobId);
+      const newStages = newJob?.stages || [];
+      if (newStages.length && !newStages.includes(cand.stage)) {
+        await api.post(`/candidates/${id}/move-stage`, { stage: newStages[0] });
+      }
+      toast.success(`Candidate moved to ${newJob?.title || 'the selected job'}`);
+      load();
+    } catch (e) {
+      toast.error(errMsg(e, 'Could not change job'));
     }
   };
 
@@ -245,7 +266,21 @@ export default function CandidateProfilePage() {
               <div className="flex items-center gap-2"><Mail className="h-4 w-4 text-muted-foreground" />{cand.email || <span className="text-muted-foreground">No email</span>}</div>
               <div className="flex items-center gap-2"><Phone className="h-4 w-4 text-muted-foreground" />{cand.phone || <span className="text-muted-foreground">No phone</span>}</div>
               <div className="flex items-center gap-2"><MapPin className="h-4 w-4 text-muted-foreground" />{cand.location || <span className="text-muted-foreground">No location</span>}</div>
-              <div className="flex items-center gap-2"><Briefcase className="h-4 w-4 text-muted-foreground" />{cand.job?.title || <span className="text-muted-foreground">No job assigned</span>}</div>
+              <div className="flex items-center gap-2" data-testid="candidate-job-field">
+                <Briefcase className="h-4 w-4 text-muted-foreground shrink-0" />
+                {isRecruiter ? (
+                  <Select value={cand.job_id || ''} onValueChange={changeJob}>
+                    <SelectTrigger className="h-8 text-sm" data-testid="candidate-job-select">
+                      <SelectValue placeholder="Assign a job" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {jobs.map((j) => <SelectItem key={j.id} value={j.id}>{j.title} · {j.department}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  cand.job?.title || <span className="text-muted-foreground">No job assigned</span>
+                )}
+              </div>
               <div className="flex items-center gap-2"><Star className="h-4 w-4 text-muted-foreground" />Recruiter: {cand.recruiter?.name || '—'}</div>
               <div className="flex items-center gap-2" data-testid="candidate-notice-period">
                 <Clock className="h-4 w-4 text-muted-foreground" />
