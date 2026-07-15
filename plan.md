@@ -1,5 +1,7 @@
 # plan.md
 
+> STATUS (Phase 1 & 2+3 COMPLETE): POC passed (resume parsing PDF/DOCX -> GPT structured JSON with confidence flags). Full app built WITH auth/RBAC already included (Phases 2+3 merged). Testing agent: backend 45/45 passed, frontend 95%, no bugs. Remaining: Phase 4 calendar sync (Google Workspace + Microsoft Graph) when user provides OAuth credentials. Demo creds in /app/memory/test_credentials.md.
+
 ## 1. Objectives
 - Deliver a lightweight, modern internal ATS (Dashboard, Candidate Tracker, Interview Scheduling, Admin Panel) on React + FastAPI + MongoDB with Tailwind + shadcn/ui.
 - Prove the **core failure-prone workflow** first: **PDF/DOCX resume → text extraction → OpenAI GPT structured JSON → reviewable fields**.
