@@ -1,0 +1,229 @@
+import { useEffect, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import {
+  Bell,
+  Briefcase,
+  CalendarDays,
+  LayoutDashboard,
+  LogOut,
+  Menu,
+  Search,
+  Settings,
+  Sprout,
+  UserPlus,
+  Users,
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { useAuth } from '@/context/AuthContext';
+import { api } from '@/lib/api';
+
+const NAV = [
+  { to: '/', label: 'Dashboard', icon: LayoutDashboard, testid: 'sidebar-nav-dashboard' },
+  { to: '/candidates', label: 'Candidates', icon: Users, testid: 'sidebar-nav-candidates' },
+  { to: '/jobs', label: 'Jobs', icon: Briefcase, roles: ['admin', 'recruiter'], testid: 'sidebar-nav-jobs' },
+  { to: '/interviews', label: 'Interviews', icon: CalendarDays, testid: 'sidebar-nav-interviews' },
+  { to: '/admin', label: 'Admin', icon: Settings, roles: ['admin'], testid: 'sidebar-nav-admin' },
+];
+
+const timeAgo = (iso) => {
+  if (!iso) return '';
+  const s = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+};
+
+export default function AppShell({ children }) {
+  const { user, logout } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [notif, setNotif] = useState({ items: [], unread: 0 });
+  const [search, setSearch] = useState('');
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  const loadNotifs = () => {
+    api.get('/notifications').then((r) => setNotif(r.data)).catch(() => {});
+  };
+
+  useEffect(() => {
+    loadNotifs();
+    const t = setInterval(loadNotifs, 30000);
+    return () => clearInterval(t);
+  }, []);
+
+  const markAllRead = async () => {
+    await api.post('/notifications/mark-read');
+    loadNotifs();
+  };
+
+  const initials = (user?.name || '?')
+    .split(' ')
+    .map((p) => p[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
+
+  const navItems = NAV.filter((n) => !n.roles || n.roles.includes(user?.role));
+
+  return (
+    <div className="min-h-screen bg-background">
+      {/* Sidebar */}
+      <aside
+        className={`fixed inset-y-0 left-0 z-40 w-[240px] bg-card border-r border-border flex flex-col transform transition-transform duration-200 lg:translate-x-0 ${
+          mobileOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        <div className="h-14 flex items-center gap-2 px-5 border-b border-border">
+          <span className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
+            <Sprout className="h-5 w-5 text-primary-foreground" />
+          </span>
+          <span className="font-display font-semibold text-lg tracking-tight">Sprout ATS</span>
+        </div>
+        <nav className="flex-1 py-4 px-3 space-y-1">
+          {navItems.map((n) => {
+            const active = n.to === '/' ? location.pathname === '/' : location.pathname.startsWith(n.to);
+            const Icon = n.icon;
+            return (
+              <Link
+                key={n.to}
+                to={n.to}
+                data-testid={n.testid}
+                onClick={() => setMobileOpen(false)}
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  active
+                    ? 'text-foreground bg-accent border-l-2 border-l-primary'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+                }`}
+              >
+                <Icon className="h-4 w-4" />
+                {n.label}
+              </Link>
+            );
+          })}
+        </nav>
+        {(user?.role === 'admin' || user?.role === 'recruiter') && (
+          <div className="p-3 border-t border-border">
+            <Button
+              className="w-full"
+              data-testid="sidebar-add-candidate-button"
+              onClick={() => {
+                setMobileOpen(false);
+                navigate('/candidates/new');
+              }}
+            >
+              <UserPlus className="h-4 w-4 mr-1" /> Add Candidate
+            </Button>
+          </div>
+        )}
+      </aside>
+
+      {mobileOpen && (
+        <div className="fixed inset-0 z-30 bg-foreground/30 lg:hidden" onClick={() => setMobileOpen(false)} />
+      )}
+
+      {/* Main */}
+      <div className="lg:pl-[240px]">
+        {/* Topbar */}
+        <header className="sticky top-0 z-20 h-14 bg-card border-b border-border flex items-center gap-3 px-4 sm:px-6">
+          <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setMobileOpen(true)} aria-label="Open menu">
+            <Menu className="h-5 w-5" />
+          </Button>
+          <form
+            className="relative flex-1 max-w-md"
+            onSubmit={(e) => {
+              e.preventDefault();
+              navigate(`/candidates?q=${encodeURIComponent(search)}`);
+            }}
+          >
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              data-testid="topbar-search-input"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search candidates..."
+              className="pl-9 h-9 bg-background"
+            />
+          </form>
+          <div className="ml-auto flex items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="relative" data-testid="notifications-bell" aria-label="Notifications">
+                  <Bell className="h-5 w-5" />
+                  {notif.unread > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 h-4 min-w-4 px-0.5 rounded-full bg-destructive text-destructive-foreground text-[10px] font-semibold flex items-center justify-center">
+                      {notif.unread}
+                    </span>
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-80" data-testid="notifications-menu">
+                <div className="flex items-center justify-between px-2 py-1.5">
+                  <DropdownMenuLabel className="p-0">Notifications</DropdownMenuLabel>
+                  {notif.unread > 0 && (
+                    <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={markAllRead} data-testid="notifications-mark-all-read">
+                      Mark all read
+                    </Button>
+                  )}
+                </div>
+                <DropdownMenuSeparator />
+                {notif.items.length === 0 && (
+                  <div className="px-3 py-6 text-sm text-muted-foreground text-center">No notifications yet</div>
+                )}
+                {notif.items.slice(0, 8).map((n) => (
+                  <DropdownMenuItem
+                    key={n.id}
+                    className="flex flex-col items-start gap-0.5 py-2 cursor-pointer"
+                    onClick={() => {
+                      api.post(`/notifications/${n.id}/read`).then(loadNotifs);
+                      if (n.link) navigate(n.link);
+                    }}
+                  >
+                    <span className={`text-sm ${n.read ? 'text-muted-foreground' : 'font-medium'}`}>{n.message}</span>
+                    <span className="text-xs text-muted-foreground font-mono">{timeAgo(n.created_at)}</span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className="flex items-center gap-2 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  data-testid="user-menu-trigger"
+                >
+                  <span className="h-8 w-8 rounded-full bg-accent text-accent-foreground text-xs font-semibold flex items-center justify-center">
+                    {initials}
+                  </span>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>
+                  <div className="text-sm font-medium">{user?.name}</div>
+                  <div className="text-xs text-muted-foreground">{user?.email}</div>
+                  <Badge variant="secondary" className="mt-1 capitalize">{user?.role}</Badge>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={logout} data-testid="logout-button" className="cursor-pointer">
+                  <LogOut className="h-4 w-4 mr-2" /> Log out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </header>
+
+        <main className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-6">{children}</main>
+      </div>
+    </div>
+  );
+}
