@@ -140,7 +140,12 @@ export default function JobsPage() {
           <Card className="shadow-none sm:col-span-2 lg:col-span-3"><CardContent className="py-10 text-center text-sm text-muted-foreground">No jobs found.</CardContent></Card>
         )}
         {jobs.map((j) => (
-          <Card key={j.id} className="shadow-none hover:shadow-sm transition-shadow" data-testid={`job-card-${j.id}`}>
+          <Card
+            key={j.id}
+            className="shadow-none hover:shadow-sm hover:border-primary/40 transition-all cursor-pointer"
+            data-testid={`job-card-${j.id}`}
+            onClick={() => navigate(`/jobs/${j.id}`)}
+          >
             <CardContent className="pt-5 space-y-3">
               <div className="flex items-start justify-between gap-2">
                 <div>
@@ -151,14 +156,18 @@ export default function JobsPage() {
               </div>
               {j.location && <div className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3" /> {j.location}</div>}
               <div className="flex items-center gap-3 text-sm">
-                <button className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors" onClick={() => navigate(`/candidates?job=${j.id}`)}>
-                  <Users className="h-4 w-4" /> <span className="tabular-nums font-medium text-foreground">{j.candidate_count ?? 0}</span> active
+                <button
+                  className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={(e) => { e.stopPropagation(); navigate(`/jobs/${j.id}`); }}
+                  data-testid={`job-view-pipeline-${j.id}`}
+                >
+                  <Users className="h-4 w-4" /> <span className="tabular-nums font-medium text-foreground">{j.candidate_count ?? 0}</span> active · View pipeline
                 </button>
               </div>
               <div className="flex flex-wrap gap-1">
                 {(j.stages || []).map((s) => <Badge key={s} variant="outline" className="text-[10px]">{s}</Badge>)}
               </div>
-              <div className="flex gap-2 pt-1">
+              <div className="flex gap-2 pt-1" onClick={(e) => e.stopPropagation()}>
                 <Button size="sm" variant="outline" onClick={() => openEdit(j)} data-testid={`job-edit-${j.id}`}><Pencil className="h-3.5 w-3.5 mr-1" /> Edit</Button>
                 {j.status === 'open' && <Button size="sm" variant="ghost" onClick={() => setStatus(j, 'on_hold')}>Hold</Button>}
                 {j.status !== 'closed' && <Button size="sm" variant="ghost" onClick={() => setStatus(j, 'closed')}>Close</Button>}
