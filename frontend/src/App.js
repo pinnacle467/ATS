@@ -8,6 +8,7 @@ import DashboardPage from '@/pages/DashboardPage';
 import CandidatesPage from '@/pages/CandidatesPage';
 import CandidateProfilePage from '@/pages/CandidateProfilePage';
 import AddCandidatePage from '@/pages/AddCandidatePage';
+import ImportCandidatesPage from '@/pages/ImportCandidatesPage';
 import InterviewsPage from '@/pages/InterviewsPage';
 import JobsPage from '@/pages/JobsPage';
 import AdminPage from '@/pages/AdminPage';
@@ -34,6 +35,7 @@ function App() {
           <Route path="/" element={<Protected><DashboardPage /></Protected>} />
           <Route path="/candidates" element={<Protected><CandidatesPage /></Protected>} />
           <Route path="/candidates/new" element={<Protected roles={['admin', 'recruiter']}><AddCandidatePage /></Protected>} />
+          <Route path="/candidates/import" element={<Protected roles={['admin', 'recruiter']}><ImportCandidatesPage /></Protected>} />
           <Route path="/candidates/:id" element={<Protected><CandidateProfilePage /></Protected>} />
           <Route path="/interviews" element={<Protected><InterviewsPage /></Protected>} />
           <Route path="/jobs" element={<Protected roles={['admin', 'recruiter']}><JobsPage /></Protected>} />

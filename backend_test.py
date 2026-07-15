@@ -714,6 +714,251 @@ class ATSTester:
             token=self.tokens['admin']
         )
     
+    def test_imports(self):
+        """Test Excel/CSV candidate import feature"""
+        self.log("\n" + "="*60, Colors.BLUE)
+        self.log("TESTING: EXCEL/CSV IMPORT", Colors.BLUE)
+        self.log("="*60, Colors.BLUE)
+        
+        if 'recruiter' not in self.tokens or 'interviewer' not in self.tokens:
+            self.log("⚠️  Skipping - missing tokens", Colors.YELLOW)
+            return
+        
+        # Test 1: GET /api/imports/template (recruiter - should be 200)
+        success, template = self.test(
+            "GET /api/imports/template (recruiter - should be 200)",
+            "GET",
+            "/imports/template",
+            200,
+            token=self.tokens['recruiter']
+        )
+        if success:
+            self.log(f"   Template downloaded successfully", Colors.GREEN)
+        
+        # Test 2: GET /api/imports/template (interviewer - should be 403)
+        self.test(
+            "GET /api/imports/template (interviewer - should be 403)",
+            "GET",
+            "/imports/template",
+            403,
+            token=self.tokens['interviewer']
+        )
+        
+        # Test 3: POST /api/imports/preview with invalid file (should be 422)
+        invalid_file_path = Path('/tmp/invalid_test.txt')
+        invalid_file_path.write_text('This is not a valid xlsx or csv file')
+        with open(invalid_file_path, 'rb') as f:
+            self.test(
+                "POST /api/imports/preview (invalid file - should be 422)",
+                "POST",
+                "/imports/preview",
+                422,
+                token=self.tokens['recruiter'],
+                files={'file': ('invalid_test.txt', f, 'text/plain')}
+            )
+        invalid_file_path.unlink()
+        
+        # Test 4: POST /api/imports/preview with valid xlsx file
+        import_file_path = Path('/app/tests/fixtures/import_test.xlsx')
+        if not import_file_path.exists():
+            self.log(f"⚠️  Import test file not found: {import_file_path}", Colors.YELLOW)
+            return
+        
+        with open(import_file_path, 'rb') as f:
+            success, preview = self.test(
+                "POST /api/imports/preview (valid xlsx - should be 200)",
+                "POST",
+                "/imports/preview",
+                200,
+                token=self.tokens['recruiter'],
+                files={'file': ('import_test.xlsx', f, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')}
+            )
+        
+        if not success:
+            self.log("⚠️  Preview failed, skipping commit tests", Colors.YELLOW)
+            return
+        
+        import_id = preview.get('import_id')
+        headers = preview.get('headers', [])
+        suggested_mapping = preview.get('suggested_mapping', {})
+        sample_rows = preview.get('sample_rows', [])
+        total_rows = preview.get('total_rows', 0)
+        
+        self.log(f"   Import ID: {import_id}", Colors.GREEN)
+        self.log(f"   Headers: {headers}", Colors.GREEN)
+        self.log(f"   Total rows: {total_rows}", Colors.GREEN)
+        self.log(f"   Sample rows: {len(sample_rows)}", Colors.GREEN)
+        
+        # Verify auto-mapping
+        expected_mappings = {
+            'Full Name': 'name',
+            'Email Address': 'email',
+            'Applied For': 'job',
+            'Status': 'stage'
+        }
+        for header, expected_field in expected_mappings.items():
+            if header in suggested_mapping:
+                actual_field = suggested_mapping[header]
+                if actual_field == expected_field:
+                    self.log(f"   ✓ Auto-mapped '{header}' -> '{expected_field}'", Colors.GREEN)
+                else:
+                    self.log(f"   ✗ Auto-mapping mismatch: '{header}' -> '{actual_field}' (expected '{expected_field}')", Colors.RED)
+        
+        # Test 5: Get jobs for default_job_id
+        success, jobs_response = self.test(
+            "GET /api/jobs (to get default job)",
+            "GET",
+            "/jobs",
+            200,
+            token=self.tokens['recruiter']
+        )
+        default_job_id = None
+        if success:
+            if isinstance(jobs_response, list) and len(jobs_response) > 0:
+                # Find "Product Manager" job or use first job
+                for job in jobs_response:
+                    if 'Product Manager' in job.get('title', ''):
+                        default_job_id = job.get('id')
+                        break
+                if not default_job_id:
+                    default_job_id = jobs_response[0].get('id')
+            elif isinstance(jobs_response, dict) and 'items' in jobs_response:
+                items = jobs_response.get('items', [])
+                for job in items:
+                    if 'Product Manager' in job.get('title', ''):
+                        default_job_id = job.get('id')
+                        break
+                if not default_job_id and items:
+                    default_job_id = items[0].get('id')
+        
+        # Test 6: POST /api/imports/{id}/commit with suggested mapping + duplicate_strategy=skip
+        commit_body = {
+            'mapping': suggested_mapping,
+            'default_job_id': default_job_id,
+            'default_source': 'career_site',
+            'duplicate_strategy': 'skip'
+        }
+        success, result = self.test(
+            "POST /api/imports/{id}/commit (with default job, skip duplicates)",
+            "POST",
+            f"/imports/{import_id}/commit",
+            200,
+            token=self.tokens['recruiter'],
+            data=commit_body
+        )
+        
+        if success:
+            created = result.get('created', 0)
+            skipped_duplicates = result.get('skipped_duplicates', 0)
+            errors = result.get('errors', [])
+            
+            self.log(f"   Created: {created}", Colors.GREEN)
+            self.log(f"   Skipped duplicates: {skipped_duplicates}", Colors.GREEN)
+            self.log(f"   Errors/Warnings: {len(errors)}", Colors.YELLOW)
+            
+            for error in errors[:5]:  # Show first 5 errors
+                self.log(f"   - Row {error.get('row')}: {error.get('reason')}", Colors.YELLOW)
+            
+            # Expected: created=4-5, skipped_duplicates=1 (sarah.chen@example.com exists in seed)
+            # Errors should include: missing-name row, unmatched-job row, invalid email warning
+            if created >= 4:
+                self.log(f"   ✓ Import created expected number of candidates", Colors.GREEN)
+            else:
+                self.log(f"   ⚠️  Expected at least 4 created, got {created}", Colors.YELLOW)
+            
+            if skipped_duplicates >= 1:
+                self.log(f"   ✓ Duplicate detection working (skipped {skipped_duplicates})", Colors.GREEN)
+            else:
+                self.log(f"   ⚠️  Expected at least 1 duplicate skipped, got {skipped_duplicates}", Colors.YELLOW)
+        
+        # Test 7: Re-commit same import_id (should be 409)
+        self.test(
+            "POST /api/imports/{id}/commit (re-commit - should be 409)",
+            "POST",
+            f"/imports/{import_id}/commit",
+            409,
+            token=self.tokens['recruiter'],
+            data=commit_body
+        )
+        
+        # Test 8: Verify imported candidates appear in GET /api/candidates
+        success, candidates = self.test(
+            "GET /api/candidates (verify imported candidates)",
+            "GET",
+            "/candidates?q=Anita",
+            200,
+            token=self.tokens['recruiter']
+        )
+        if success:
+            items = candidates.get('items', [])
+            anita_found = any('Anita' in c.get('name', '') for c in items)
+            if anita_found:
+                self.log(f"   ✓ Found imported candidate 'Anita Desai'", Colors.GREEN)
+                # Check stage
+                anita = next((c for c in items if 'Anita' in c.get('name', '')), None)
+                if anita:
+                    stage = anita.get('stage')
+                    self.log(f"   Stage: {stage}", Colors.GREEN)
+                    if stage == 'Screening':
+                        self.log(f"   ✓ Stage correctly set to 'Screening'", Colors.GREEN)
+            else:
+                self.log(f"   ⚠️  Imported candidate 'Anita Desai' not found", Colors.YELLOW)
+        
+        # Test 9: Check timeline for imported notes with [Imported] prefix
+        if success and items:
+            candidate_with_notes = None
+            for c in items:
+                if 'imported' in c or c.get('import_id'):
+                    candidate_with_notes = c
+                    break
+            
+            if candidate_with_notes:
+                candidate_id = candidate_with_notes.get('id')
+                success, timeline = self.test(
+                    "GET /api/candidates/{id}/timeline (check [Imported] notes)",
+                    "GET",
+                    f"/candidates/{candidate_id}/timeline",
+                    200,
+                    token=self.tokens['recruiter']
+                )
+                if success:
+                    imported_notes = [t for t in timeline if '[Imported]' in t.get('text', '')]
+                    if imported_notes:
+                        self.log(f"   ✓ Found {len(imported_notes)} notes with [Imported] prefix", Colors.GREEN)
+                    else:
+                        self.log(f"   ⚠️  No notes with [Imported] prefix found", Colors.YELLOW)
+        
+        # Test 10: Check audit log for candidates_imported entry
+        if 'admin' in self.tokens:
+            success, logs = self.test(
+                "GET /api/audit-log (check candidates_imported entry)",
+                "GET",
+                "/audit-log?limit=50",
+                200,
+                token=self.tokens['admin']
+            )
+            if success:
+                import_logs = [log for log in logs if log.get('action') == 'candidates_imported']
+                if import_logs:
+                    self.log(f"   ✓ Found {len(import_logs)} candidates_imported audit log entries", Colors.GREEN)
+                else:
+                    self.log(f"   ⚠️  No candidates_imported audit log entries found", Colors.YELLOW)
+        
+        # Test 11: Check activity feed for import activity
+        success, activities = self.test(
+            "GET /api/activities (check import activity)",
+            "GET",
+            "/activities?limit=50",
+            200,
+            token=self.tokens['recruiter']
+        )
+        if success:
+            import_activities = [a for a in activities if 'import' in a.get('action', '').lower()]
+            if import_activities:
+                self.log(f"   ✓ Found {len(import_activities)} import activities", Colors.GREEN)
+            else:
+                self.log(f"   ⚠️  No import activities found", Colors.YELLOW)
+    
     def print_summary(self):
         """Print test summary"""
         self.log("\n" + "="*60, Colors.BLUE)

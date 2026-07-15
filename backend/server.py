@@ -20,6 +20,7 @@ import routes_interviews
 import routes_dashboard
 import routes_admin
 import routes_notifications
+import routes_imports
 
 app = FastAPI(title='Sprout ATS')
 
@@ -39,6 +40,7 @@ api_router.include_router(routes_interviews.router)
 api_router.include_router(routes_dashboard.router)
 api_router.include_router(routes_admin.router)
 api_router.include_router(routes_notifications.router)
+api_router.include_router(routes_imports.router)
 
 app.include_router(api_router)
 
