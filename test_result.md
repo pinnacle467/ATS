@@ -101,3 +101,35 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+## user_problem_statement: User pulled the connected GitHub repo (pinnacle467/ATS, which is this same Sprout ATS project's mirror) into this workspace via "Pull from GitHub". This wiped backend/.env and frontend/.env (gitignored) and left the app crashing (backend: KeyError MONGO_URL). User asked main agent to rebuild the missing .env files so the imported build runs correctly.
+
+## backend:
+##   - task: "Recreate backend/.env after GitHub import wiped it (MONGO_URL, DB_NAME, JWT_SECRET, EMERGENT_LLM_KEY, CORS_ORIGINS)"
+##     implemented: true
+##     working: true
+##     file: "backend/.env"
+##     stuck_count: 0
+##     priority: "high"
+##     needs_retesting: true
+##     status_history:
+##         -working: true
+##         -agent: "main"
+##         -comment: "backend/.env and frontend/.env were missing after 'Pull from GitHub' (both are gitignored at repo root .gitignore, so never pushed). Backend was crash-looping with KeyError: 'MONGO_URL'. Recreated backend/.env with MONGO_URL=mongodb://localhost:27017, DB_NAME=sprout_ats, CORS_ORIGINS=*, freshly generated JWT_SECRET, and EMERGENT_LLM_KEY fetched via emergent_integrations_manager. Recreated frontend/.env with REACT_APP_BACKEND_URL pulled from the environment's actual preview_endpoint (https://b2b011a2-c28e-4722-ace2-04a2a0b400ea.preview.emergentagent.com). Restarted backend+frontend via supervisor. Backend now starts cleanly, auto-seeds demo data (seed_if_empty), Mongo now shows populated 'sprout_ats' db. Also recreated /app/memory/test_credentials.md (also gitignored, was missing) with the 5 seeded demo accounts (admin/recruiter/interviewer roles) sourced from seed.py. Login page screenshot confirms UI renders correctly with demo one-click login buttons. Requesting backend testing agent to run full regression (auth, resumes, jobs, candidates, interviews, dashboard, admin, imports) since this is effectively validating the freshly-seeded/restored environment end-to-end, not new code changes."
+
+## metadata:
+##   created_by: "main_agent"
+##   version: "1.0"
+##   test_sequence: 1
+##   run_ui: false
+
+## test_plan:
+##   current_focus:
+##     - "Recreate backend/.env after GitHub import wiped it (MONGO_URL, DB_NAME, JWT_SECRET, EMERGENT_LLM_KEY, CORS_ORIGINS)"
+##   stuck_tasks: []
+##   test_all: true
+##   test_priority: "high_first"
+
+## agent_communication:
+##     -agent: "main"
+##     -message: "Restored missing .env files (backend + frontend) after user pulled the connected GitHub repo, which wiped gitignored env files and crashed the backend. App now boots clean and auto-seeded demo data into a fresh 'sprout_ats' Mongo db. No application code was changed — this is a pure environment/config recovery. Please run a full backend regression pass to confirm auth (all 5 demo roles), resumes parsing, jobs, candidates, interviews, dashboard, admin, and imports endpoints all work against the freshly seeded DB. Demo credentials are in /app/memory/test_credentials.md."
