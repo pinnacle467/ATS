@@ -1,0 +1,1 @@
+{"indexes":[{"v":{"$numberInt":"2"},"key":{"_id":{"$numberInt":"1"}},"name":"_id_"},{"v":{"$numberInt":"2"},"key":{"scheduled_at":{"$numberInt":"1"}},"name":"scheduled_at_1"},{"v":{"$numberInt":"2"},"key":{"interviewer_ids":{"$numberInt":"1"}},"name":"interviewer_ids_1"}],"uuid":"6e150dc3cad94b2d9c8c903c9d1caa1a","collectionName":"interviews","type":"collection"}
