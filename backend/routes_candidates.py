@@ -62,7 +62,7 @@ class NoteCreate(BaseModel):
 
 class BulkAction(BaseModel):
     candidate_ids: list[str]
-    action: str  # move_stage | reject | tag | assign
+    action: str  # move_stage | reject | tag | assign | delete
     stage: Optional[str] = None
     reason: Optional[str] = None
     tag: Optional[str] = None
@@ -254,6 +254,8 @@ async def move_stage(candidate_id: str, body: StageMove, user: dict = Depends(re
 
 @router.post('/bulk-action')
 async def bulk_action(body: BulkAction, user: dict = Depends(require_roles('admin', 'recruiter'))):
+    if body.action == 'delete' and user['role'] != 'admin':
+        raise HTTPException(status_code=403, detail='Only admins can delete candidates')
     count = 0
     for cid in body.candidate_ids:
         c = await db.candidates.find_one({'id': cid})
@@ -275,6 +277,10 @@ async def bulk_action(body: BulkAction, user: dict = Depends(require_roles('admi
         elif body.action == 'assign' and body.recruiter_id:
             await db.candidates.update_one({'id': cid}, {'$set': {'recruiter_id': body.recruiter_id, 'updated_at': now_iso()}})
             await notify(body.recruiter_id, 'assignment', f"Candidate {c['name']} was assigned to you", f'/candidates/{cid}')
+        elif body.action == 'delete':
+            await db.candidates.delete_one({'id': cid})
+            await db.notes.delete_many({'candidate_id': cid})
+            await log_activity(user, 'candidate_deleted', f"deleted {c['name']}", candidate_id=cid)
         count += 1
     await log_audit(user, f'bulk_{body.action}', 'candidate', 'bulk', f'{count} candidates')
     return {'ok': True, 'count': count}

@@ -183,6 +183,9 @@ export default function CandidatesPage() {
               <Button variant="outline" onClick={exportCsv} data-testid="candidates-export-csv-button">
                 <Download className="h-4 w-4 mr-1" /> CSV
               </Button>
+              <Button variant="outline" onClick={() => navigate('/candidates/import')} data-testid="candidates-import-button">
+                <FileSpreadsheet className="h-4 w-4 mr-1" /> Import from Excel/CSV
+              </Button>
               <Button onClick={() => navigate('/candidates/new')} data-testid="candidates-add-button">
                 <UserPlus className="h-4 w-4 mr-1" /> Add Candidate
               </Button>
@@ -257,6 +260,9 @@ export default function CandidatesPage() {
             <Button size="sm" variant="outline" className="bg-card" onClick={() => setBulkDialog('tag')} data-testid="bulk-tag-button">Tag</Button>
             <Button size="sm" variant="outline" className="bg-card" onClick={() => setBulkDialog('assign')} data-testid="bulk-assign-button">Assign</Button>
             <Button size="sm" variant="destructive" onClick={() => setBulkDialog('reject')} data-testid="bulk-reject-button">Reject</Button>
+            {user?.role === 'admin' && (
+              <Button size="sm" variant="destructive" onClick={() => setBulkDialog('delete')} data-testid="bulk-delete-button">Delete</Button>
+            )}
           </div>
         </div>
       )}
@@ -348,6 +354,7 @@ export default function CandidatesPage() {
               {bulkDialog === 'reject' && `Reject ${selected.length} candidates`}
               {bulkDialog === 'tag' && `Tag ${selected.length} candidates`}
               {bulkDialog === 'assign' && `Assign ${selected.length} candidates`}
+              {bulkDialog === 'delete' && `Delete ${selected.length} candidate${selected.length === 1 ? '' : 's'}?`}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
@@ -375,10 +382,21 @@ export default function CandidatesPage() {
                 <Textarea value={bulkReason} onChange={(e) => setBulkReason(e.target.value)} placeholder="e.g. Not a technical fit" data-testid="bulk-reject-reason" />
               </div>
             )}
+            {bulkDialog === 'delete' && (
+              <p className="text-sm text-muted-foreground" data-testid="bulk-delete-warning">
+                This will permanently delete {selected.length} candidate{selected.length === 1 ? '' : 's'} and all their notes/history. This action cannot be undone.
+              </p>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setBulkDialog(null)}>Cancel</Button>
-            <Button onClick={runBulk} data-testid="bulk-confirm-button" variant={bulkDialog === 'reject' ? 'destructive' : 'default'}>Confirm</Button>
+            <Button
+              onClick={runBulk}
+              data-testid="bulk-confirm-button"
+              variant={bulkDialog === 'reject' || bulkDialog === 'delete' ? 'destructive' : 'default'}
+            >
+              {bulkDialog === 'delete' ? 'Delete' : 'Confirm'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

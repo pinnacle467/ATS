@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 
 # Public endpoint from frontend/.env
-BASE_URL = "https://ats-import-flow.preview.emergentagent.com/api"
+BASE_URL = "https://b2b011a2-c28e-4722-ace2-04a2a0b400ea.preview.emergentagent.com/api"
 
 # Test credentials from /app/memory/test_credentials.md
 CREDENTIALS = {
@@ -714,6 +714,236 @@ class ATSTester:
             token=self.tokens['admin']
         )
     
+    def test_bulk_delete(self):
+        """Test bulk delete candidates feature (admin-only)"""
+        self.log("\n" + "="*60, Colors.BLUE)
+        self.log("TESTING: BULK DELETE CANDIDATES (ADMIN-ONLY)", Colors.BLUE)
+        self.log("="*60, Colors.BLUE)
+        
+        if 'admin' not in self.tokens or 'recruiter' not in self.tokens:
+            self.log("⚠️  Skipping - missing tokens", Colors.YELLOW)
+            return
+        
+        # Test 1: Get existing candidates to identify IDs for deletion
+        success, cands_response = self.test(
+            "GET /api/candidates (as recruiter to list candidates)",
+            "GET",
+            "/candidates?limit=10",
+            200,
+            token=self.tokens['recruiter']
+        )
+        
+        if not success or not isinstance(cands_response, dict) or 'items' not in cands_response:
+            self.log("⚠️  Could not get candidate list, skipping bulk delete tests", Colors.YELLOW)
+            return
+        
+        candidates = cands_response.get('items', [])
+        if len(candidates) < 2:
+            self.log("⚠️  Not enough candidates for bulk delete test (need at least 2)", Colors.YELLOW)
+            return
+        
+        # Pick 2 candidates that are NOT critical seed data (avoid first few)
+        # Use candidates from the middle/end of the list
+        test_candidate_ids = [c['id'] for c in candidates[-2:]]
+        self.log(f"   Selected {len(test_candidate_ids)} candidates for deletion test", Colors.GREEN)
+        
+        # Test 2: Recruiter attempts bulk delete (should be 403)
+        success, response = self.test(
+            "POST /api/candidates/bulk-action with action=delete (recruiter - should be 403)",
+            "POST",
+            "/candidates/bulk-action",
+            403,
+            token=self.tokens['recruiter'],
+            data={
+                'candidate_ids': test_candidate_ids,
+                'action': 'delete'
+            }
+        )
+        if success:
+            self.log("   ✓ Recruiter correctly denied bulk delete (403)", Colors.GREEN)
+        
+        # Test 3: Admin bulk deletes candidates (should be 200)
+        success, response = self.test(
+            "POST /api/candidates/bulk-action with action=delete (admin - should be 200)",
+            "POST",
+            "/candidates/bulk-action",
+            200,
+            token=self.tokens['admin'],
+            data={
+                'candidate_ids': test_candidate_ids,
+                'action': 'delete'
+            }
+        )
+        
+        if success:
+            count = response.get('count', 0)
+            self.log(f"   ✓ Admin successfully deleted {count} candidates", Colors.GREEN)
+            if count == len(test_candidate_ids):
+                self.log(f"   ✓ Deleted count matches requested count", Colors.GREEN)
+            else:
+                self.log(f"   ⚠️  Expected {len(test_candidate_ids)} deleted, got {count}", Colors.YELLOW)
+        
+        # Test 4: Verify candidates are gone (should be 404)
+        for cid in test_candidate_ids:
+            success, response = self.test(
+                f"GET /api/candidates/{cid} (should be 404 after delete)",
+                "GET",
+                f"/candidates/{cid}",
+                404,
+                token=self.tokens['admin']
+            )
+            if success:
+                self.log(f"   ✓ Candidate {cid} correctly returns 404", Colors.GREEN)
+        
+        # Test 5: Verify other bulk actions still work - move_stage
+        # Get a fresh candidate for testing other bulk actions
+        success, cands_response = self.test(
+            "GET /api/candidates (get fresh candidate for other bulk actions)",
+            "GET",
+            "/candidates?limit=2",
+            200,
+            token=self.tokens['admin']
+        )
+        
+        if success and isinstance(cands_response, dict) and 'items' in cands_response:
+            test_candidates = cands_response.get('items', [])
+            if len(test_candidates) >= 1:
+                test_cid = test_candidates[0]['id']
+                
+                # Test move_stage
+                success, response = self.test(
+                    "POST /api/candidates/bulk-action with action=move_stage",
+                    "POST",
+                    "/candidates/bulk-action",
+                    200,
+                    token=self.tokens['admin'],
+                    data={
+                        'candidate_ids': [test_cid],
+                        'action': 'move_stage',
+                        'stage': 'Screening'
+                    }
+                )
+                if success:
+                    self.log(f"   ✓ Bulk move_stage still works", Colors.GREEN)
+                    # Verify the change
+                    success, candidate = self.test(
+                        f"GET /api/candidates/{test_cid} (verify stage change)",
+                        "GET",
+                        f"/candidates/{test_cid}",
+                        200,
+                        token=self.tokens['admin']
+                    )
+                    if success and candidate.get('stage') == 'Screening':
+                        self.log(f"   ✓ Stage correctly updated to 'Screening'", Colors.GREEN)
+                
+                # Test tag
+                success, response = self.test(
+                    "POST /api/candidates/bulk-action with action=tag",
+                    "POST",
+                    "/candidates/bulk-action",
+                    200,
+                    token=self.tokens['admin'],
+                    data={
+                        'candidate_ids': [test_cid],
+                        'action': 'tag',
+                        'tag': 'test-bulk-tag'
+                    }
+                )
+                if success:
+                    self.log(f"   ✓ Bulk tag still works", Colors.GREEN)
+                    # Verify the tag
+                    success, candidate = self.test(
+                        f"GET /api/candidates/{test_cid} (verify tag added)",
+                        "GET",
+                        f"/candidates/{test_cid}",
+                        200,
+                        token=self.tokens['admin']
+                    )
+                    if success and 'test-bulk-tag' in candidate.get('tags', []):
+                        self.log(f"   ✓ Tag correctly added", Colors.GREEN)
+                
+                # Test assign
+                recruiter_id = self.users.get('recruiter', {}).get('id')
+                if recruiter_id:
+                    success, response = self.test(
+                        "POST /api/candidates/bulk-action with action=assign",
+                        "POST",
+                        "/candidates/bulk-action",
+                        200,
+                        token=self.tokens['admin'],
+                        data={
+                            'candidate_ids': [test_cid],
+                            'action': 'assign',
+                            'recruiter_id': recruiter_id
+                        }
+                    )
+                    if success:
+                        self.log(f"   ✓ Bulk assign still works", Colors.GREEN)
+                        # Verify the assignment
+                        success, candidate = self.test(
+                            f"GET /api/candidates/{test_cid} (verify assignment)",
+                            "GET",
+                            f"/candidates/{test_cid}",
+                            200,
+                            token=self.tokens['admin']
+                        )
+                        if success and candidate.get('recruiter_id') == recruiter_id:
+                            self.log(f"   ✓ Recruiter correctly assigned", Colors.GREEN)
+                
+                # Test reject
+                success, response = self.test(
+                    "POST /api/candidates/bulk-action with action=reject",
+                    "POST",
+                    "/candidates/bulk-action",
+                    200,
+                    token=self.tokens['admin'],
+                    data={
+                        'candidate_ids': [test_cid],
+                        'action': 'reject',
+                        'reason': 'Not a good fit for the role'
+                    }
+                )
+                if success:
+                    self.log(f"   ✓ Bulk reject still works", Colors.GREEN)
+                    # Verify the rejection
+                    success, candidate = self.test(
+                        f"GET /api/candidates/{test_cid} (verify rejection)",
+                        "GET",
+                        f"/candidates/{test_cid}",
+                        200,
+                        token=self.tokens['admin']
+                    )
+                    if success:
+                        if candidate.get('stage') == 'Rejected' and candidate.get('status') == 'rejected':
+                            self.log(f"   ✓ Candidate correctly rejected (stage=Rejected, status=rejected)", Colors.GREEN)
+                        if candidate.get('rejection_reason') == 'Not a good fit for the role':
+                            self.log(f"   ✓ Rejection reason correctly set", Colors.GREEN)
+        
+        # Test 6: Sanity check unrelated endpoints still work
+        self.test(
+            "GET /api/dashboard/stats (sanity check after bulk-delete)",
+            "GET",
+            "/dashboard/stats",
+            200,
+            token=self.tokens['admin']
+        )
+        
+        self.test(
+            "GET /api/jobs (sanity check after bulk-delete)",
+            "GET",
+            "/jobs",
+            200,
+            token=self.tokens['admin']
+        )
+        
+        self.test(
+            "GET /api/imports/template (sanity check after bulk-delete)",
+            "GET",
+            "/imports/template",
+            200,
+            token=self.tokens['admin']
+        )
+    
     def test_imports(self):
         """Test Excel/CSV candidate import feature"""
         self.log("\n" + "="*60, Colors.BLUE)
@@ -995,6 +1225,7 @@ def main():
     tester.test_rbac()
     tester.test_resume_parsing()
     tester.test_candidates()
+    tester.test_bulk_delete()  # NEW: Test bulk delete feature
     tester.test_jobs()
     tester.test_interviews()
     tester.test_dashboard()
