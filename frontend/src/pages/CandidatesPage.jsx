@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Download, FileSpreadsheet, Kanban, List, Search, UserPlus, X } from 'lucide-react';
+import { Download, FileSpreadsheet, FileText, Kanban, List, Search, UserPlus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -36,6 +36,16 @@ export const StageBadge = ({ stage }) => (
 );
 
 export const REJECTION_REASONS = ['Not Fit', 'No Response', 'Offer Declined', 'Out of Budget'];
+
+export const ResumeIndicator = ({ hasResume, className = '' }) => (
+  <span title={hasResume ? 'Resume attached' : 'No resume on file'} className="inline-flex">
+    <FileText
+      className={`h-3.5 w-3.5 shrink-0 ${hasResume ? 'text-primary' : 'text-muted-foreground/30'} ${className}`}
+      aria-label={hasResume ? 'Resume attached' : 'No resume on file'}
+      data-testid={hasResume ? 'resume-indicator-yes' : 'resume-indicator-no'}
+    />
+  </span>
+);
 
 export default function CandidatesPage() {
   const { user } = useAuth();
@@ -366,7 +376,10 @@ export default function CandidatesPage() {
                     </TableCell>
                   )}
                   <TableCell>
-                    <div className="font-medium">{c.name}</div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-medium">{c.name}</span>
+                      <ResumeIndicator hasResume={!!c.resume_file_id} />
+                    </div>
                     <div className="text-xs text-muted-foreground">{c.email || 'no email'}</div>
                   </TableCell>
                   <TableCell className="text-sm">{c.job_title || '—'}</TableCell>

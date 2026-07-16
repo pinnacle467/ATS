@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DndContext, DragOverlay, PointerSensor, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import { Badge } from '@/components/ui/badge';
-import { MapPin } from 'lucide-react';
+import { FileText, MapPin } from 'lucide-react';
 
 const STAGE_DOT = {
   Applied: 'bg-sky-500',
@@ -18,7 +18,12 @@ function CandidateCard({ candidate, dragging }) {
     <div
       className={`bg-card rounded-lg border border-border p-3 space-y-1.5 ${dragging ? 'shadow-md scale-[1.02]' : 'hover:shadow-sm'} transition-shadow cursor-grab active:cursor-grabbing`}
     >
-      <div className="font-medium text-sm">{candidate.name}</div>
+      <div className="flex items-center gap-1.5">
+        <span className="font-medium text-sm truncate">{candidate.name}</span>
+        <span title={candidate.resume_file_id ? 'Resume attached' : 'No resume on file'} className="inline-flex">
+          <FileText className={`h-3.5 w-3.5 shrink-0 ${candidate.resume_file_id ? 'text-primary' : 'text-muted-foreground/30'}`} data-testid={candidate.resume_file_id ? 'resume-indicator-yes' : 'resume-indicator-no'} />
+        </span>
+      </div>
       <div className="text-xs text-muted-foreground truncate">{candidate.current_title || '—'}{candidate.current_company ? ` @ ${candidate.current_company}` : ''}</div>
       {candidate.location && (
         <div className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3" />{candidate.location}</div>

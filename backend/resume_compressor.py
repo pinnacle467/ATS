@@ -33,12 +33,57 @@ def _compress_pdf(data: bytes) -> bytes:
     return out
 
 
+_IMAGE_EXT_TO_PIL_FORMAT = {'png': 'PNG', 'jpg': 'JPEG', 'jpeg': 'JPEG', 'bmp': 'BMP', 'tif': 'TIFF', 'tiff': 'TIFF'}
+_MAX_IMAGE_DIM = 1600  # px — plenty for on-screen preview/print of an embedded photo/logo in a resume
+
+
+def _compress_docx_image(raw: bytes, ext: str) -> bytes:
+    """Downscale/re-encode a single image embedded in a DOCX (word/media/*) losing
+    no perceptible quality: caps very large dimensions and re-compresses with a
+    high-quality JPEG encoder for photos, or optimized PNG for graphics/logos.
+    Falls back to the original bytes on any decode error or if not smaller."""
+    from PIL import Image
+
+    pil_format = _IMAGE_EXT_TO_PIL_FORMAT.get(ext)
+    if not pil_format:
+        return raw
+    try:
+        img = Image.open(io.BytesIO(raw))
+        img.load()
+    except Exception:
+        return raw
+
+    if max(img.size) > _MAX_IMAGE_DIM:
+        img.thumbnail((_MAX_IMAGE_DIM, _MAX_IMAGE_DIM), Image.LANCZOS)
+
+    out = io.BytesIO()
+    try:
+        if pil_format == 'JPEG':
+            if img.mode in ('RGBA', 'P'):
+                img = img.convert('RGB')
+            img.save(out, format='JPEG', quality=85, optimize=True)
+        else:
+            img.save(out, format=pil_format, optimize=True)
+    except Exception:
+        return raw
+
+    result = out.getvalue()
+    return result if 0 < len(result) < len(raw) else raw
+
+
 def _compress_docx(data: bytes) -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(io.BytesIO(data), 'r') as zin:
         with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as zout:
             for item in zin.infolist():
-                zout.writestr(item.filename, zin.read(item.filename), compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
+                content = zin.read(item.filename)
+                if item.filename.startswith('word/media/') and '.' in item.filename:
+                    ext = item.filename.rsplit('.', 1)[-1].lower()
+                    try:
+                        content = _compress_docx_image(content, ext)
+                    except Exception as e:
+                        logger.warning(f'DOCX image compression failed for {item.filename}, keeping original: {e}')
+                zout.writestr(item.filename, content, compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
     return buf.getvalue()
 
 

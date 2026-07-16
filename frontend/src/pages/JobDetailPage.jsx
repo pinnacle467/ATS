@@ -4,7 +4,7 @@ import { ArrowLeft, MapPin, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { StageBadge, SOURCES } from '@/pages/CandidatesPage';
+import { StageBadge, SOURCES, ResumeIndicator } from '@/pages/CandidatesPage';
 import { api, errMsg } from '@/lib/api';
 
 const STATUS_STYLE = {
@@ -172,7 +172,10 @@ export default function JobDetailPage() {
                     data-testid={`job-pipeline-candidate-${c.id}`}
                     className="w-full text-left rounded-lg border border-border px-2.5 py-2 hover:bg-secondary transition-colors"
                   >
-                    <div className="text-xs font-medium truncate">{c.name}</div>
+                    <div className="text-xs font-medium truncate flex items-center gap-1.5">
+                      <span className="truncate">{c.name}</span>
+                      <ResumeIndicator hasResume={!!c.resume_file_id} />
+                    </div>
                     <div className="text-[11px] text-muted-foreground truncate">{c.current_title || c.email || '—'}</div>
                   </button>
                 ))}
