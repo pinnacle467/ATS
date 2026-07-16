@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import re
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import Response
@@ -13,6 +14,24 @@ from utils import new_id, now_iso
 router = APIRouter(tags=['resumes'])
 
 MAX_SIZE = 10 * 1024 * 1024  # 10 MB
+
+
+async def _find_match(parsed: dict):
+    """Look for an existing candidate this resume likely belongs to (e.g. one
+    created via a CSV/Excel import that doesn't have a resume yet). Email match
+    is treated as high-confidence; name-only match as a lower-confidence hint
+    the user should confirm before merging."""
+    email = (parsed.get('email') or '').strip()
+    name = (parsed.get('name') or '').strip()
+    if email:
+        cand = await db.candidates.find_one({'email': {'$regex': f'^{re.escape(email)}$', '$options': 'i'}})
+        if cand:
+            return {'candidate_id': cand['id'], 'candidate_name': cand['name'], 'match_type': 'email'}
+    if name:
+        cand = await db.candidates.find_one({'name': {'$regex': f'^{re.escape(name)}$', '$options': 'i'}})
+        if cand:
+            return {'candidate_id': cand['id'], 'candidate_name': cand['name'], 'match_type': 'name'}
+    return None
 
 
 async def _store_file(data: bytes, filename: str, content_type: str, user_id: str) -> str:
@@ -48,6 +67,7 @@ async def _parse_one(data: bytes, filename: str, content_type: str, user_id: str
             'file_id': fid,
             'parsed': parsed,
             'low_confidence_fields': low_confidence_fields(parsed),
+            'match': await _find_match(parsed),
         }
     except ValueError as e:
         return {'filename': filename, 'status': 'error', 'error': str(e)}

@@ -1413,6 +1413,365 @@ class ATSTester:
             else:
                 self.log(f"   ⚠️  No import activities found", Colors.YELLOW)
     
+    def test_resume_matching_and_merge(self):
+        """Test resume-to-existing-candidate matching & merge feature"""
+        self.log("\n" + "="*60, Colors.BLUE)
+        self.log("TESTING: RESUME MATCHING & MERGE", Colors.BLUE)
+        self.log("="*60, Colors.BLUE)
+        
+        if 'recruiter' not in self.tokens:
+            self.log("⚠️  Skipping - no recruiter token", Colors.YELLOW)
+            return
+        
+        # Step 1: Parse resume_sarah_chen.pdf standalone (no existing candidate yet)
+        self.log("\n📄 Step 1: Parse resume_sarah_chen.pdf standalone", Colors.BLUE)
+        resume_path = Path('/app/tests/fixtures/resume_sarah_chen.pdf')
+        if not resume_path.exists():
+            self.log(f"⚠️  Resume file not found: {resume_path}", Colors.YELLOW)
+            self.critical_failures.append("resume_sarah_chen.pdf not found - cannot test matching feature")
+            return
+        
+        with open(resume_path, 'rb') as f:
+            success, response = self.test(
+                "POST /api/resumes/parse (standalone, no match yet)",
+                "POST",
+                "/resumes/parse",
+                200,
+                token=self.tokens['recruiter'],
+                files={'file': ('resume_sarah_chen.pdf', f, 'application/pdf')},
+                timeout=90
+            )
+        
+        if not success:
+            self.critical_failures.append("Step 1 failed - cannot parse resume")
+            return
+        
+        parsed_name = response.get('parsed', {}).get('name')
+        parsed_email = response.get('parsed', {}).get('email')
+        match_field = response.get('match')
+        file_id_initial = response.get('file_id')
+        
+        self.log(f"   Parsed name: {parsed_name}", Colors.GREEN)
+        self.log(f"   Parsed email: {parsed_email}", Colors.GREEN)
+        self.log(f"   Match field: {match_field}", Colors.YELLOW)
+        
+        if not parsed_name or not parsed_email:
+            self.critical_failures.append("Step 1 failed - parsed name or email is missing")
+            return
+        
+        # Verify match field exists in response (should be null/None at this point)
+        if 'match' not in response:
+            self.critical_failures.append("Step 1 CRITICAL: 'match' field missing from response")
+            self.log("   ❌ CRITICAL: 'match' field not present in response", Colors.RED)
+        elif match_field is None:
+            self.log("   ✅ Match field is null (no existing candidate found)", Colors.GREEN)
+        else:
+            self.log(f"   ⚠️  Match field is NOT null: {match_field} (may be from prior testing)", Colors.YELLOW)
+        
+        # Step 2: Create a NEW test candidate with exact parsed name, no email, no resume_file_id
+        self.log("\n📄 Step 2: Create NEW candidate with parsed name (no email, no resume)", Colors.BLUE)
+        
+        # Get a valid job_id
+        success, jobs_response = self.test(
+            "GET /api/jobs (to get job_id)",
+            "GET",
+            "/jobs",
+            200,
+            token=self.tokens['recruiter']
+        )
+        
+        job_id = None
+        if success:
+            if isinstance(jobs_response, list) and len(jobs_response) > 0:
+                job_id = jobs_response[0].get('id')
+            elif isinstance(jobs_response, dict) and 'items' in jobs_response:
+                items = jobs_response.get('items', [])
+                if items:
+                    job_id = items[0].get('id')
+        
+        if not job_id:
+            self.critical_failures.append("Step 2 failed - no valid job_id found")
+            return
+        
+        candidate_data = {
+            'name': parsed_name,  # Use exact parsed name
+            'email': None,  # Leave email as null
+            'job_id': job_id,
+            'source': 'career_site',
+            'tags': ['test-matching']
+        }
+        
+        success, candidate = self.test(
+            "POST /api/candidates (create test candidate)",
+            "POST",
+            "/candidates",
+            200,
+            token=self.tokens['recruiter'],
+            data=candidate_data
+        )
+        
+        if not success:
+            self.critical_failures.append("Step 2 failed - cannot create candidate")
+            return
+        
+        candidate_id = candidate.get('id')
+        original_job_id = candidate.get('job_id')
+        original_stage = candidate.get('stage')
+        original_tags = candidate.get('tags', [])
+        original_source = candidate.get('source')
+        original_recruiter_id = candidate.get('recruiter_id')
+        
+        self.log(f"   Created candidate ID: {candidate_id}", Colors.GREEN)
+        self.log(f"   Original job_id: {original_job_id}", Colors.YELLOW)
+        self.log(f"   Original stage: {original_stage}", Colors.YELLOW)
+        self.log(f"   Original tags: {original_tags}", Colors.YELLOW)
+        self.log(f"   Original source: {original_source}", Colors.YELLOW)
+        self.log(f"   Original recruiter_id: {original_recruiter_id}", Colors.YELLOW)
+        
+        # Step 3: Parse resume_sarah_chen.pdf again - should now match by name
+        self.log("\n📄 Step 3: Parse resume_sarah_chen.pdf again (should match by name)", Colors.BLUE)
+        
+        with open(resume_path, 'rb') as f:
+            success, response = self.test(
+                "POST /api/resumes/parse (should match existing candidate)",
+                "POST",
+                "/resumes/parse",
+                200,
+                token=self.tokens['recruiter'],
+                files={'file': ('resume_sarah_chen.pdf', f, 'application/pdf')},
+                timeout=90
+            )
+        
+        if not success:
+            self.critical_failures.append("Step 3 failed - cannot parse resume")
+            return
+        
+        match_field = response.get('match')
+        file_id_1 = response.get('file_id')
+        parsed_data = response.get('parsed', {})
+        
+        self.log(f"   Match field: {match_field}", Colors.YELLOW)
+        self.log(f"   File ID: {file_id_1}", Colors.GREEN)
+        
+        if match_field is None:
+            self.critical_failures.append("Step 3 CRITICAL: 'match' field is null (should match by name)")
+            self.log("   ❌ CRITICAL: 'match' field is null, expected name match", Colors.RED)
+        elif not isinstance(match_field, dict):
+            self.critical_failures.append(f"Step 3 CRITICAL: 'match' field is not a dict: {match_field}")
+            self.log(f"   ❌ CRITICAL: 'match' field is not a dict: {match_field}", Colors.RED)
+        else:
+            match_type = match_field.get('match_type')
+            match_candidate_id = match_field.get('candidate_id')
+            match_candidate_name = match_field.get('candidate_name')
+            
+            if match_type == 'name':
+                self.log(f"   ✅ Match type is 'name' (correct)", Colors.GREEN)
+            else:
+                self.critical_failures.append(f"Step 3 CRITICAL: match_type is '{match_type}', expected 'name'")
+                self.log(f"   ❌ CRITICAL: match_type is '{match_type}', expected 'name'", Colors.RED)
+            
+            if match_candidate_id == candidate_id:
+                self.log(f"   ✅ Matched candidate_id is correct: {match_candidate_id}", Colors.GREEN)
+            else:
+                self.critical_failures.append(f"Step 3 CRITICAL: matched candidate_id '{match_candidate_id}' != created candidate_id '{candidate_id}'")
+                self.log(f"   ❌ CRITICAL: matched candidate_id mismatch", Colors.RED)
+            
+            if match_candidate_name:
+                self.log(f"   ✅ Matched candidate_name: {match_candidate_name}", Colors.GREEN)
+            else:
+                self.log(f"   ⚠️  Matched candidate_name is empty", Colors.YELLOW)
+        
+        # Step 4: Call merge-resume endpoint
+        self.log("\n📄 Step 4: Call POST /api/candidates/{id}/merge-resume", Colors.BLUE)
+        
+        merge_data = {
+            'file_id': file_id_1,
+            'parsed': parsed_data
+        }
+        
+        success, merge_response = self.test(
+            "POST /api/candidates/{id}/merge-resume",
+            "POST",
+            f"/candidates/{candidate_id}/merge-resume",
+            200,
+            token=self.tokens['recruiter'],
+            data=merge_data
+        )
+        
+        if not success:
+            self.critical_failures.append("Step 4 CRITICAL: merge-resume endpoint failed")
+            self.log("   ❌ CRITICAL: merge-resume endpoint returned non-200", Colors.RED)
+        else:
+            self.log("   ✅ Merge-resume endpoint returned 200", Colors.GREEN)
+        
+        # Step 5: GET candidate - verify resume fields populated, pipeline fields unchanged
+        self.log("\n📄 Step 5: GET /api/candidates/{id} - verify merge results", Colors.BLUE)
+        
+        success, updated_candidate = self.test(
+            "GET /api/candidates/{id} (verify merge)",
+            "GET",
+            f"/candidates/{candidate_id}",
+            200,
+            token=self.tokens['recruiter']
+        )
+        
+        if not success:
+            self.critical_failures.append("Step 5 failed - cannot get candidate")
+            return
+        
+        # Check resume fields are populated
+        resume_fields = {
+            'current_title': updated_candidate.get('current_title'),
+            'current_company': updated_candidate.get('current_company'),
+            'location': updated_candidate.get('location'),
+            'skills': updated_candidate.get('skills', []),
+            'experience': updated_candidate.get('experience', []),
+            'education': updated_candidate.get('education', []),
+            'resume_file_id': updated_candidate.get('resume_file_id')
+        }
+        
+        self.log(f"   Resume fields after merge:", Colors.YELLOW)
+        for field, value in resume_fields.items():
+            if field == 'resume_file_id':
+                if value == file_id_1:
+                    self.log(f"     ✅ {field}: {value} (correct)", Colors.GREEN)
+                else:
+                    self.critical_failures.append(f"Step 5 CRITICAL: resume_file_id '{value}' != expected '{file_id_1}'")
+                    self.log(f"     ❌ {field}: {value} (expected {file_id_1})", Colors.RED)
+            elif value:
+                self.log(f"     ✅ {field}: {value if not isinstance(value, list) else f'{len(value)} items'}", Colors.GREEN)
+            else:
+                self.log(f"     ⚠️  {field}: empty/null", Colors.YELLOW)
+        
+        # Check pipeline fields are UNCHANGED
+        pipeline_fields = {
+            'job_id': (updated_candidate.get('job_id'), original_job_id),
+            'stage': (updated_candidate.get('stage'), original_stage),
+            'tags': (updated_candidate.get('tags', []), original_tags),
+            'source': (updated_candidate.get('source'), original_source),
+            'recruiter_id': (updated_candidate.get('recruiter_id'), original_recruiter_id)
+        }
+        
+        self.log(f"   Pipeline fields (should be UNCHANGED):", Colors.YELLOW)
+        all_pipeline_unchanged = True
+        for field, (current, original) in pipeline_fields.items():
+            if current == original:
+                self.log(f"     ✅ {field}: {current} (unchanged)", Colors.GREEN)
+            else:
+                all_pipeline_unchanged = False
+                self.critical_failures.append(f"Step 5 CRITICAL: {field} changed from '{original}' to '{current}' (should be unchanged)")
+                self.log(f"     ❌ {field}: {current} (was {original}) - SHOULD NOT CHANGE", Colors.RED)
+        
+        if all_pipeline_unchanged:
+            self.log(f"   ✅ All pipeline fields correctly unchanged", Colors.GREEN)
+        
+        # Step 6: Update candidate email to match resume's email, parse again - should match by email
+        self.log("\n📄 Step 6: Update candidate email, parse again (should match by email)", Colors.BLUE)
+        
+        success, update_response = self.test(
+            "PUT /api/candidates/{id} (set email to match resume)",
+            "PUT",
+            f"/candidates/{candidate_id}",
+            200,
+            token=self.tokens['recruiter'],
+            data={'email': parsed_email}
+        )
+        
+        if not success:
+            self.critical_failures.append("Step 6 failed - cannot update candidate email")
+        else:
+            self.log(f"   ✅ Updated candidate email to: {parsed_email}", Colors.GREEN)
+        
+        # Parse resume again
+        with open(resume_path, 'rb') as f:
+            success, response = self.test(
+                "POST /api/resumes/parse (should match by email now)",
+                "POST",
+                "/resumes/parse",
+                200,
+                token=self.tokens['recruiter'],
+                files={'file': ('resume_sarah_chen.pdf', f, 'application/pdf')},
+                timeout=90
+            )
+        
+        if not success:
+            self.critical_failures.append("Step 6 failed - cannot parse resume")
+        else:
+            match_field = response.get('match')
+            self.log(f"   Match field: {match_field}", Colors.YELLOW)
+            
+            if match_field and isinstance(match_field, dict):
+                match_type = match_field.get('match_type')
+                if match_type == 'email':
+                    self.log(f"   ✅ Match type is 'email' (correct - email takes priority)", Colors.GREEN)
+                else:
+                    self.critical_failures.append(f"Step 6 CRITICAL: match_type is '{match_type}', expected 'email'")
+                    self.log(f"   ❌ CRITICAL: match_type is '{match_type}', expected 'email'", Colors.RED)
+                
+                if match_field.get('candidate_id') == candidate_id:
+                    self.log(f"   ✅ Still matches same candidate", Colors.GREEN)
+            else:
+                self.critical_failures.append("Step 6 CRITICAL: 'match' field is null or not a dict")
+                self.log("   ❌ CRITICAL: 'match' field is null or not a dict", Colors.RED)
+        
+        # Step 7: Parse resume_miguel_torres.pdf (no match) - confirm match is null
+        self.log("\n📄 Step 7: Parse resume_miguel_torres.pdf (no match expected)", Colors.BLUE)
+        
+        miguel_path = Path('/app/tests/fixtures/resume_miguel_torres.pdf')
+        if not miguel_path.exists():
+            self.log(f"⚠️  Resume file not found: {miguel_path}", Colors.YELLOW)
+        else:
+            with open(miguel_path, 'rb') as f:
+                success, response = self.test(
+                    "POST /api/resumes/parse (Miguel Torres - no match)",
+                    "POST",
+                    "/resumes/parse",
+                    200,
+                    token=self.tokens['recruiter'],
+                    files={'file': ('resume_miguel_torres.pdf', f, 'application/pdf')},
+                    timeout=90
+                )
+            
+            if not success:
+                self.critical_failures.append("Step 7 failed - cannot parse Miguel Torres resume")
+            else:
+                match_field = response.get('match')
+                parsed = response.get('parsed', {})
+                
+                self.log(f"   Parsed name: {parsed.get('name')}", Colors.GREEN)
+                self.log(f"   Match field: {match_field}", Colors.YELLOW)
+                
+                if 'match' not in response:
+                    self.critical_failures.append("Step 7 CRITICAL: 'match' field missing from response")
+                    self.log("   ❌ CRITICAL: 'match' field not present in response", Colors.RED)
+                elif match_field is None:
+                    self.log("   ✅ Match field is null (no match found - correct)", Colors.GREEN)
+                else:
+                    self.log(f"   ⚠️  Match field is NOT null: {match_field} (may be from prior testing)", Colors.YELLOW)
+                
+                # Verify other fields are unaffected (no regression)
+                if response.get('file_id') and response.get('parsed') and response.get('status') == 'success':
+                    self.log("   ✅ Response structure normal (no regression)", Colors.GREEN)
+        
+        # Step 8: Sanity checks
+        self.log("\n📄 Step 8: Sanity checks (no regressions)", Colors.BLUE)
+        
+        self.test(
+            "GET /api/jobs (sanity check)",
+            "GET",
+            "/jobs",
+            200,
+            token=self.tokens['recruiter']
+        )
+        
+        self.test(
+            "GET /api/candidates?limit=5 (sanity check)",
+            "GET",
+            "/candidates?limit=5",
+            200,
+            token=self.tokens['recruiter']
+        )
+    
     def print_summary(self):
         """Print test summary"""
         self.log("\n" + "="*60, Colors.BLUE)

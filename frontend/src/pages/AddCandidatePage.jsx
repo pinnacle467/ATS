@@ -43,6 +43,8 @@ function parsedToDraft(result) {
     resume_file_id: result.file_id,
     low_confidence_fields: result.low_confidence_fields || [],
     _filename: result.filename,
+    _match: result.match || null,
+    _mergeChoice: result.match ? (result.match.match_type === 'email' ? 'merge' : 'create') : 'create',
   };
 }
 
@@ -92,6 +94,39 @@ function DraftForm({ draft, onChange, jobs, tags, onSave, onDiscard, saving, ind
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {draft._match && (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 space-y-2" data-testid={`draft-match-banner-${index}`}>
+            <p className="text-sm text-amber-900">
+              <strong>Matched existing candidate:</strong> {draft._match.candidate_name}
+              {' '}
+              <span className="text-xs text-amber-700">
+                ({draft._match.match_type === 'email' ? 'same email address' : 'same name — please confirm this is the same person'})
+              </span>
+            </p>
+            <div className="flex items-center gap-4">
+              <label className="flex items-center gap-1.5 text-xs font-medium text-amber-900 cursor-pointer">
+                <input
+                  type="radio"
+                  name={`merge-choice-${index}`}
+                  checked={draft._mergeChoice === 'merge'}
+                  onChange={() => onChange({ ...draft, _mergeChoice: 'merge' })}
+                  data-testid={`draft-merge-radio-${index}`}
+                />
+                Merge into existing profile
+              </label>
+              <label className="flex items-center gap-1.5 text-xs font-medium text-amber-900 cursor-pointer">
+                <input
+                  type="radio"
+                  name={`merge-choice-${index}`}
+                  checked={draft._mergeChoice === 'create'}
+                  onChange={() => onChange({ ...draft, _mergeChoice: 'create' })}
+                  data-testid={`draft-create-radio-${index}`}
+                />
+                Create as a new candidate anyway
+              </label>
+            </div>
+          </div>
+        )}
         <div className="grid sm:grid-cols-2 gap-3">
           {field('name', 'Full Name *', 'Jane Doe')}
           {field('email', 'Email', 'jane@example.com', 'email')}
@@ -103,24 +138,33 @@ function DraftForm({ draft, onChange, jobs, tags, onSave, onDiscard, saving, ind
         </div>
 
         <div className="grid sm:grid-cols-2 gap-3">
-          <div className="space-y-1">
-            <Label className="text-xs">Job *</Label>
-            <Select value={draft.job_id} onValueChange={(v) => onChange({ ...draft, job_id: v })}>
-              <SelectTrigger data-testid={`parsed-review-job-select-${index}`}><SelectValue placeholder="Assign to job" /></SelectTrigger>
-              <SelectContent>
-                {jobs.filter((j) => j.status === 'open').map((j) => (
-                  <SelectItem key={j.id} value={j.id}>{j.title} · {j.department}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs">Source</Label>
-            <Select value={draft.source} onValueChange={(v) => onChange({ ...draft, source: v })}>
-              <SelectTrigger data-testid={`parsed-review-source-select-${index}`}><SelectValue /></SelectTrigger>
-              <SelectContent>{SOURCES.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
-            </Select>
-          </div>
+          {(!draft._match || draft._mergeChoice !== 'merge') && (
+            <div className="space-y-1">
+              <Label className="text-xs">Job *</Label>
+              <Select value={draft.job_id} onValueChange={(v) => onChange({ ...draft, job_id: v })}>
+                <SelectTrigger data-testid={`parsed-review-job-select-${index}`}><SelectValue placeholder="Assign to job" /></SelectTrigger>
+                <SelectContent>
+                  {jobs.filter((j) => j.status === 'open').map((j) => (
+                    <SelectItem key={j.id} value={j.id}>{j.title} · {j.department}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          {(!draft._match || draft._mergeChoice !== 'merge') && (
+            <div className="space-y-1">
+              <Label className="text-xs">Source</Label>
+              <Select value={draft.source} onValueChange={(v) => onChange({ ...draft, source: v })}>
+                <SelectTrigger data-testid={`parsed-review-source-select-${index}`}><SelectValue /></SelectTrigger>
+                <SelectContent>{SOURCES.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+          )}
+          {draft._match && draft._mergeChoice === 'merge' && (
+            <p className="text-xs text-muted-foreground sm:col-span-2">
+              The existing job, pipeline stage, source and tags for this candidate will stay unchanged — only contact info, skills, experience and education will be updated from the resume.
+            </p>
+          )}
         </div>
 
         <div className="space-y-1">
@@ -194,7 +238,7 @@ function DraftForm({ draft, onChange, jobs, tags, onSave, onDiscard, saving, ind
 
         <Button onClick={onSave} disabled={saving} className="w-full sm:w-auto" data-testid={`parsed-review-save-button-${index}`}>
           {saving ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null}
-          Save Candidate
+          {draft._match && draft._mergeChoice === 'merge' ? 'Merge into Existing Candidate' : 'Save Candidate'}
         </Button>
       </CardContent>
     </Card>
@@ -276,21 +320,36 @@ export default function AddCandidatePage() {
       toast.error('Please enter a valid email address');
       return;
     }
-    if (!d.job_id) {
+    const isMerge = d._match && d._mergeChoice === 'merge';
+    if (!isMerge && !d.job_id) {
       toast.error('Please assign the candidate to a job');
       return;
     }
     setSavingIdx(idx);
     try {
-      const body = { ...d };
-      delete body._filename;
-      ['email', 'phone', 'current_title', 'current_company', 'location', 'notice_period', 'notes'].forEach((k) => {
-        if (!body[k]) body[k] = null;
-      });
-      const r = await api.post('/candidates', body);
-      toast.success(`${d.name} added to pipeline`);
-      setDrafts((ds) => ds.filter((_, i) => i !== idx));
-      if (drafts.length === 1) navigate(`/candidates/${r.data.id}`);
+      if (isMerge) {
+        const parsed = {
+          name: d.name, email: d.email, phone: d.phone, current_title: d.current_title,
+          current_company: d.current_company, location: d.location, notice_period: d.notice_period,
+          skills: d.skills, experience: d.experience, education: d.education,
+        };
+        const r = await api.post(`/candidates/${d._match.candidate_id}/merge-resume`, { file_id: d.resume_file_id, parsed });
+        toast.success(`Resume merged into ${r.data.name}'s profile`);
+        setDrafts((ds) => ds.filter((_, i) => i !== idx));
+        if (drafts.length === 1) navigate(`/candidates/${r.data.id}`);
+      } else {
+        const body = { ...d };
+        delete body._filename;
+        delete body._match;
+        delete body._mergeChoice;
+        ['email', 'phone', 'current_title', 'current_company', 'location', 'notice_period', 'notes'].forEach((k) => {
+          if (!body[k]) body[k] = null;
+        });
+        const r = await api.post('/candidates', body);
+        toast.success(`${d.name} added to pipeline`);
+        setDrafts((ds) => ds.filter((_, i) => i !== idx));
+        if (drafts.length === 1) navigate(`/candidates/${r.data.id}`);
+      }
     } catch (e) {
       toast.error(errMsg(e));
     } finally {

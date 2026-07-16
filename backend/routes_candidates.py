@@ -317,6 +317,34 @@ async def add_note(candidate_id: str, body: NoteCreate, user: dict = Depends(get
     return clean(note)
 
 
+class MergeResume(BaseModel):
+    file_id: str
+    parsed: dict = {}
+
+
+@router.post('/{candidate_id}/merge-resume')
+async def merge_resume(candidate_id: str, body: MergeResume, user: dict = Depends(require_roles('admin', 'recruiter'))):
+    cand = await db.candidates.find_one({'id': candidate_id})
+    if not cand:
+        raise HTTPException(status_code=404, detail='Candidate not found')
+    p = body.parsed or {}
+    updates = {'resume_file_id': body.file_id, 'updated_at': now_iso()}
+    for f in ['name', 'email', 'phone', 'current_title', 'current_company', 'location', 'notice_period']:
+        val = p.get(f)
+        if val:
+            updates[f] = val
+    for f in ['experience', 'education', 'skills']:
+        val = p.get(f)
+        if val:
+            updates[f] = val
+    await db.candidates.update_one({'id': candidate_id}, {'$set': updates})
+    await log_activity(user, 'resume_merged', f"Matched and merged an uploaded resume into {cand['name']}'s profile", candidate_id=candidate_id)
+    await log_audit(user, 'merge_resume', 'candidate', candidate_id, cand['name'])
+    updated = await db.candidates.find_one({'id': candidate_id})
+    updated.pop('_id', None)
+    return updated
+
+
 @router.get('/{candidate_id}/timeline')
 async def timeline(candidate_id: str, user: dict = Depends(get_current_user)):
     if user['role'] == 'interviewer':
