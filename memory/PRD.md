@@ -27,3 +27,12 @@ POC script: /app/tests/poc_resume_parse.py (all tests passed).
 
 ## Env
 - EMERGENT_LLM_KEY and JWT_SECRET in /app/backend/.env
+
+## Changelog (this session — Feb 2026)
+- **DOCX compression enhanced**: `resume_compressor.py` now also downsamples/re-encodes embedded images (word/media/*) inside DOCX files via Pillow (max 1600px dim, JPEG q=85 or optimized PNG), on top of the pre-existing max-level zip re-compression. Falls back safely to original bytes on any error. Verified byte-safe (zip integrity + identical extracted text) via direct script test and via live UI screenshot (embedded photo in a real resume still renders correctly post-compression).
+- **Rejection sub-reason ("Not Fit") verified working end-to-end**: confirmed via direct API test (`move-stage` with reason `"Not Fit: <detail>"` persists correctly to `rejection_reason`/`status`/`stage`) and code review of all 3 entry points (CandidateProfilePage reject dialog, CandidatesPage bulk-reject dialog, Kanban drag-to-Rejected dialog) — all correctly gate "Not Fit" behind a required text detail field.
+- **Resume attachment indicators verified working**: visually confirmed on Candidates table (colored vs dimmed file icon per row) via screenshot.
+- **Resume preview enlarged + made expandable** (`CandidateProfilePage.jsx`): default preview height increased from 480px to 720px; added an "Expand" button (`data-testid=candidate-resume-expand-button`) that opens a large full-screen modal (`data-testid=candidate-resume-expand-modal`, ~95vw x 92vh) rendering the same PDF iframe / DOCX preview at full readable size. Fixed a docx-preview rendering race (blank/gray result) by adding a 200ms delay before calling `renderAsync` in the modal so the Dialog's open-transition finishes and the container has real width before docx-preview measures it. Verified visually: DOCX renders crisp, large, fully readable (including embedded photo); PDF iframe blob URL wiring confirmed correct (blank rendering when screenshotted is a known headless-Chromium limitation — no native PDF viewer plugin in Playwright's Chromium build — not an app bug; renders fine in real user browsers, consistent with the pre-existing default PDF preview behavior).
+
+## Deferred (explicitly, per user)
+- External filesystem storage for resumes (moving off base64-in-MongoDB) — deferred, not started this session.

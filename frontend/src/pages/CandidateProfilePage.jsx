@@ -11,6 +11,7 @@ import {
   GraduationCap,
   Mail,
   MapPin,
+  Maximize2,
   Phone,
   Star,
   Tag,
@@ -47,6 +48,8 @@ export default function CandidateProfilePage() {
   const [resumeType, setResumeType] = useState(null); // null | 'loading' | 'pdf' | 'docx' | 'unsupported' | 'error'
   const [resumeBlob, setResumeBlob] = useState(null);
   const docxContainerRef = useRef(null);
+  const expandedDocxContainerRef = useRef(null);
+  const [resumeExpandOpen, setResumeExpandOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
   const [rejectCategory, setRejectCategory] = useState('');
@@ -130,6 +133,28 @@ export default function CandidateProfilePage() {
       }).catch(() => setResumeType('docx-error'));
     }
   }, [resumeType, resumeBlob]);
+
+  // Render the same DOCX preview into the larger expanded-view container when it opens.
+  // Small delay lets the Dialog's open animation/layout settle first (docx-preview measures
+  // the container's actual width when ignoreWidth is used — rendering too early against an
+  // in-transition/zero-width container produces a blank result).
+  useEffect(() => {
+    if (resumeExpandOpen && resumeType === 'docx' && resumeBlob) {
+      const timer = setTimeout(() => {
+        const container = expandedDocxContainerRef.current;
+        if (!container) return;
+        container.innerHTML = '';
+        renderAsync(resumeBlob, container, container, {
+          className: 'docx-preview-expanded',
+          inWrapper: true,
+          ignoreWidth: true,
+          ignoreHeight: true,
+          breakPages: false,
+        }).catch((err) => console.error('Expanded DOCX render failed:', err));
+      }, 200);
+      return () => clearTimeout(timer);
+    }
+  }, [resumeExpandOpen, resumeType, resumeBlob]);
 
   const moveStage = async (stage, reason) => {
     try {
@@ -344,24 +369,31 @@ export default function CandidateProfilePage() {
           <Card className="shadow-none" data-testid="candidate-resume-preview">
             <CardHeader className="pb-2 flex-row items-center justify-between space-y-0">
               <CardTitle className="text-sm font-semibold flex items-center gap-2"><FileText className="h-4 w-4" /> Resume</CardTitle>
-              {cand.resume_file_id && (
-                <Button size="sm" variant="outline" onClick={downloadResume} data-testid="candidate-resume-download">
-                  <Download className="h-4 w-4 mr-1" /> Download
-                </Button>
-              )}
+              <div className="flex items-center gap-2">
+                {cand.resume_file_id && (resumeType === 'pdf' || resumeType === 'docx') && (
+                  <Button size="sm" variant="outline" onClick={() => setResumeExpandOpen(true)} data-testid="candidate-resume-expand-button">
+                    <Maximize2 className="h-4 w-4 mr-1" /> Expand
+                  </Button>
+                )}
+                {cand.resume_file_id && (
+                  <Button size="sm" variant="outline" onClick={downloadResume} data-testid="candidate-resume-download">
+                    <Download className="h-4 w-4 mr-1" /> Download
+                  </Button>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
               {!cand.resume_file_id && <p className="text-sm text-muted-foreground py-4 text-center">No resume on file for this candidate.</p>}
               {resumeType === 'loading' && <p className="text-sm text-muted-foreground py-4 text-center">Loading preview...</p>}
               {resumeType === 'error' && <p className="text-sm text-destructive py-4 text-center">Could not load resume preview. Try downloading instead.</p>}
               {resumeType === 'pdf' && resumeUrl && (
-                <iframe title="Resume preview" src={resumeUrl} className="w-full h-[480px] rounded-lg border border-border bg-white" />
+                <iframe title="Resume preview" src={resumeUrl} className="w-full h-[720px] rounded-lg border border-border bg-white" />
               )}
               {(resumeType === 'docx' || resumeType === 'docx-error') && (
                 <div
                   ref={docxContainerRef}
                   data-testid="candidate-resume-docx-preview"
-                  className="docx-preview-wrapper w-full h-[480px] overflow-auto rounded-lg border border-border bg-white p-4 text-black"
+                  className="docx-preview-wrapper w-full h-[720px] overflow-auto rounded-lg border border-border bg-white p-4 text-black"
                 >
                   {resumeType === 'docx-error' && (
                     <p className="text-sm text-destructive py-4 text-center">Could not render this Word document. Try downloading instead.</p>
@@ -498,6 +530,30 @@ export default function CandidateProfilePage() {
               Reject Candidate
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Expanded resume preview modal */}
+      <Dialog open={resumeExpandOpen} onOpenChange={setResumeExpandOpen}>
+        <DialogContent className="sm:max-w-5xl w-[95vw] h-[92vh] flex flex-col" data-testid="candidate-resume-expand-modal">
+          <DialogHeader className="flex-row items-center justify-between space-y-0 pr-8">
+            <DialogTitle className="flex items-center gap-2"><FileText className="h-4 w-4" /> {cand.name} — Resume</DialogTitle>
+            <Button size="sm" variant="outline" onClick={downloadResume} data-testid="candidate-resume-expand-download">
+              <Download className="h-4 w-4 mr-1" /> Download
+            </Button>
+          </DialogHeader>
+          <div className="flex-1 min-h-0">
+            {resumeType === 'pdf' && resumeUrl && (
+              <iframe title="Resume preview expanded" src={resumeUrl} className="w-full h-full rounded-lg border border-border bg-white" />
+            )}
+            {resumeType === 'docx' && (
+              <div
+                ref={expandedDocxContainerRef}
+                data-testid="candidate-resume-docx-preview-expanded"
+                className="docx-preview-wrapper w-full h-full overflow-auto rounded-lg border border-border bg-white p-6 text-black"
+              />
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div>
