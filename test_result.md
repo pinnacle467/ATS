@@ -228,6 +228,10 @@
 ##         -working: "NA"
 ##         -agent: "main"
 ##         -comment: "ADDITION: user asked for source statistics on this same page — how many candidates came from each source (LinkedIn, Referral, Job Board, Career Site) for that job. No backend change needed — candidates for the job were already being fetched client-side; added a 'Candidate Sources' card (data-testid=job-source-stats) above the Pipeline section showing each of the 4 known sources (exported SOURCES constant, now shared from CandidatesPage.jsx) as a labeled horizontal bar with count + percentage (data-testid=job-source-{value}), plus an 'Other' bucket for any unmatched/legacy source values. Lint clean, webpack compiled successfully."
+##         -working: "NA"
+##         -agent: "main"
+##         -comment: "ADDITION 2: user asked that clicking a source row (e.g. LinkedIn) navigates to the candidates sourced from that source. Made each of the 4 known-source rows in the Candidate Sources card a clickable button (disabled/non-clickable if count=0) that navigates to /candidates?job_id={id}&source={value}. Updated CandidatesPage.jsx's filters initial state to read job_id/stage/source from URL query params on mount (previously only 'q' search was read from the URL — job_id/source query params were silently ignored, a pre-existing gap) so the Candidates page now correctly opens pre-filtered to that exact job + source combination, with the Job and Source filter dropdowns visibly reflecting the applied filters. The 'Other' bucket row (candidates with an unrecognized/legacy source value) was intentionally left non-clickable since it doesn't map to one filterable source value. Lint clean, webpack compiled successfully."
+
 ##   - task: "Allow editing a candidate's assigned job after creation (Contact & Details card, admin/recruiter only)"
 ##     implemented: true
 ##     working: "NA"
@@ -257,12 +261,12 @@
 ## metadata:
 ##   created_by: "main_agent"
 ##   version: "1.0"
-##   test_sequence: 8
+##   test_sequence: 9
 ##   run_ui: false
 
 ## test_plan:
 ##   current_focus:
-##     - "New page: Job pipeline detail view (click a job on /jobs to see candidate counts + candidate lists per pipeline stage)"
+##     - "New page: Job pipeline detail view (click a job on /jobs to see candidate counts + candidate lists per pipeline stage, incl. clickable Candidate Sources -> pre-filtered Candidates page)"
 ##   stuck_tasks:
 ##     - "BUG FIX: DOCX resume preview not rendering on candidate profile page (only PDF worked)"
 ##     - "Structured rejection reasons (dropdown: Not Fit/No Response/Offer Declined/Out of Budget) required whenever a candidate is moved to Rejected stage"
@@ -287,3 +291,5 @@
 ##     -agent: "testing"
 ##     -message: "✅ RESUME AUTO-COMPRESSION FEATURE FULLY TESTED AND WORKING. All 5 test cases from review request passed with 100% success rate: (1) PDF compression: resume_sarah_chen.pdf reduced from 2059B to 1688B (18.0% reduction), parsing successful (name/email extracted correctly), file is valid PDF. (2) DOCX compression: resume_priya_patel.docx reduced from 37009B to 34666B (6.3% reduction), parsing successful, file is valid DOCX. (3) Bulk upload: Both PDFs parsed successfully with correct data. (4) File retrieval: GET /api/files/{file_id} returns valid, openable files smaller than originals. (5) Sanity checks: All endpoints working, no regressions. CRITICAL: Text extraction happens on ORIGINAL bytes BEFORE compression, so parsing accuracy is unaffected (verified). Compression is lossless for visual content. Implementation is production-ready. Overall test suite: 60/61 tests passed (98.4%). The 1 failure is unrelated (interviewer login - user doesn't exist in DB). Ready for user acceptance or deployment."
 
+##     -agent: "main"
+##     -message: "Retrying Job Detail page verification (previous 4 attempts failed: 3x testing agent didn't execute any steps, 1x script used a relative goto('/login') path which failed). This time also verify the NEW clickable-source-drilldown addition: on /jobs/{id}, the Candidate Sources card rows (LinkedIn/Referral/Job Board/Career Site) should now be clickable buttons that navigate to /candidates?job_id={id}&source={value}, landing on the Candidates page with the Job and Source filter dropdowns already set to match (this required fixing a pre-existing gap where CandidatesPage.jsx ignored job_id/source URL query params). Please use the full absolute URL (from the page_url parameter you're given) for ALL page.goto() calls, not relative paths."

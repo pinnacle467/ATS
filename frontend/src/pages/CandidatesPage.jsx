@@ -48,7 +48,13 @@ export default function CandidatesPage() {
   const [tags, setTags] = useState([]);
   const [stages, setStages] = useState(['Applied', 'Screening', 'Interview', 'Offer', 'Hired', 'Rejected']);
   const [q, setQ] = useState(searchParams.get('q') || '');
-  const [filters, setFilters] = useState({ job_id: 'all', stage: 'all', source: 'all', recruiter_id: 'all', tag: 'all' });
+  const [filters, setFilters] = useState({
+    job_id: searchParams.get('job_id') || 'all',
+    stage: searchParams.get('stage') || 'all',
+    source: searchParams.get('source') || 'all',
+    recruiter_id: 'all',
+    tag: 'all',
+  });
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState([]);
   const [loading, setLoading] = useState(true);

@@ -116,7 +116,14 @@ export default function JobDetailPage() {
         <CardContent className="space-y-2.5" data-testid="job-source-stats">
           {candidates.length === 0 && <p className="text-xs text-muted-foreground text-center py-2">No candidates yet</p>}
           {sourceCounts.map((s) => (
-            <div key={s.value} className="flex items-center gap-3" data-testid={`job-source-${s.value}`}>
+            <button
+              key={s.value}
+              type="button"
+              onClick={() => s.count > 0 && navigate(`/candidates?job_id=${job.id}&source=${s.value}`)}
+              disabled={s.count === 0}
+              data-testid={`job-source-${s.value}`}
+              className={`flex items-center gap-3 w-full text-left rounded-md px-1.5 py-1 -mx-1.5 transition-colors ${s.count > 0 ? 'hover:bg-secondary cursor-pointer' : 'cursor-default'}`}
+            >
               <span className="text-xs w-24 shrink-0 text-muted-foreground truncate">{s.label}</span>
               <div className="flex-1 h-2 rounded-full bg-secondary overflow-hidden">
                 <div className="h-full bg-primary rounded-full" style={{ width: `${(s.count / maxSourceCount) * 100}%` }} />
@@ -124,7 +131,7 @@ export default function JobDetailPage() {
               <span className="text-xs font-medium tabular-nums w-16 text-right">
                 {s.count}{candidates.length > 0 && <span className="text-muted-foreground"> ({Math.round((s.count / candidates.length) * 100)}%)</span>}
               </span>
-            </div>
+            </button>
           ))}
           {otherSourceCount > 0 && (
             <div className="flex items-center gap-3" data-testid="job-source-other">
