@@ -15,7 +15,7 @@ import KanbanBoard from '@/components/KanbanBoard';
 import { useAuth } from '@/context/AuthContext';
 import { api, errMsg } from '@/lib/api';
 
-const SOURCES = [
+export const SOURCES = [
   { value: 'referral', label: 'Referral' },
   { value: 'job_board', label: 'Job Board' },
   { value: 'career_site', label: 'Career Site' },

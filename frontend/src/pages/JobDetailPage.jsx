@@ -4,7 +4,7 @@ import { ArrowLeft, MapPin, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { StageBadge } from '@/pages/CandidatesPage';
+import { StageBadge, SOURCES } from '@/pages/CandidatesPage';
 import { api, errMsg } from '@/lib/api';
 
 const STATUS_STYLE = {
@@ -69,6 +69,14 @@ export default function JobDetailPage() {
   }));
   const activeCount = candidates.filter((c) => c.status === 'active').length;
 
+  const knownSourceValues = SOURCES.map((s) => s.value);
+  const sourceCounts = SOURCES.map((s) => ({
+    ...s,
+    count: candidates.filter((c) => c.source === s.value).length,
+  }));
+  const otherSourceCount = candidates.filter((c) => !knownSourceValues.includes(c.source)).length;
+  const maxSourceCount = Math.max(1, ...sourceCounts.map((s) => s.count), otherSourceCount);
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -97,6 +105,40 @@ export default function JobDetailPage() {
           <CardContent className="pt-5 text-sm text-muted-foreground">{job.description}</CardContent>
         </Card>
       )}
+
+      <Card className="shadow-none">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold flex items-center justify-between gap-2">
+            <span>Candidate Sources</span>
+            <span className="text-xs font-normal text-muted-foreground">{candidates.length} total</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2.5" data-testid="job-source-stats">
+          {candidates.length === 0 && <p className="text-xs text-muted-foreground text-center py-2">No candidates yet</p>}
+          {sourceCounts.map((s) => (
+            <div key={s.value} className="flex items-center gap-3" data-testid={`job-source-${s.value}`}>
+              <span className="text-xs w-24 shrink-0 text-muted-foreground truncate">{s.label}</span>
+              <div className="flex-1 h-2 rounded-full bg-secondary overflow-hidden">
+                <div className="h-full bg-primary rounded-full" style={{ width: `${(s.count / maxSourceCount) * 100}%` }} />
+              </div>
+              <span className="text-xs font-medium tabular-nums w-16 text-right">
+                {s.count}{candidates.length > 0 && <span className="text-muted-foreground"> ({Math.round((s.count / candidates.length) * 100)}%)</span>}
+              </span>
+            </div>
+          ))}
+          {otherSourceCount > 0 && (
+            <div className="flex items-center gap-3" data-testid="job-source-other">
+              <span className="text-xs w-24 shrink-0 text-muted-foreground truncate">Other</span>
+              <div className="flex-1 h-2 rounded-full bg-secondary overflow-hidden">
+                <div className="h-full bg-primary rounded-full" style={{ width: `${(otherSourceCount / maxSourceCount) * 100}%` }} />
+              </div>
+              <span className="text-xs font-medium tabular-nums w-16 text-right">
+                {otherSourceCount}{candidates.length > 0 && <span className="text-muted-foreground"> ({Math.round((otherSourceCount / candidates.length) * 100)}%)</span>}
+              </span>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <div>
         <h2 className="font-display text-lg font-semibold mb-3">Pipeline</h2>

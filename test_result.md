@@ -225,6 +225,9 @@
 ##         -working: "NA"
 ##         -agent: "main"
 ##         -comment: "User wants to click a job on the Jobs page and see how many candidates are in each pipeline stage and which specific candidates are in each stage. No backend changes needed — reused the existing GET /api/jobs/{id} (job info incl. stages array) and GET /api/candidates?job_id={id}&limit=500 (already supports job filtering, respects RBAC via _visible_query) endpoints. Added new frontend-only route /jobs/:id -> JobDetailPage.jsx which fetches both, groups candidates client-side by job.stages order, and renders one card per stage showing a count badge + scrollable list of candidate name/title rows (clickable -> navigates to /candidates/:id candidate profile). Made job cards on JobsPage.jsx clickable (navigate to /jobs/:id) while wrapping the existing Edit/Hold/Close/Reopen/Delete action-buttons row in stopPropagation so those still work without triggering navigation; also fixed the existing 'X active' button to stopPropagation + still navigate correctly. Route added to App.js (admin/recruiter only, matching existing Jobs page restriction). Lint clean, webpack compiled successfully. Testing agent has been unable to execute browser steps across 3 attempts (interrupted before starting each time) — remains unverified in browser."
+##         -working: "NA"
+##         -agent: "main"
+##         -comment: "ADDITION: user asked for source statistics on this same page — how many candidates came from each source (LinkedIn, Referral, Job Board, Career Site) for that job. No backend change needed — candidates for the job were already being fetched client-side; added a 'Candidate Sources' card (data-testid=job-source-stats) above the Pipeline section showing each of the 4 known sources (exported SOURCES constant, now shared from CandidatesPage.jsx) as a labeled horizontal bar with count + percentage (data-testid=job-source-{value}), plus an 'Other' bucket for any unmatched/legacy source values. Lint clean, webpack compiled successfully."
 ##   - task: "Allow editing a candidate's assigned job after creation (Contact & Details card, admin/recruiter only)"
 ##     implemented: true
 ##     working: "NA"
@@ -259,10 +262,10 @@
 
 ## test_plan:
 ##   current_focus:
-##     - "Structured rejection reasons (dropdown: Not Fit/No Response/Offer Declined/Out of Budget) required whenever a candidate is moved to Rejected stage"
+##     - "New page: Job pipeline detail view (click a job on /jobs to see candidate counts + candidate lists per pipeline stage)"
 ##   stuck_tasks:
 ##     - "BUG FIX: DOCX resume preview not rendering on candidate profile page (only PDF worked)"
-##     - "New page: Job pipeline detail view (click a job on /jobs to see candidate counts + candidate lists per pipeline stage)"
+##     - "Structured rejection reasons (dropdown: Not Fit/No Response/Offer Declined/Out of Budget) required whenever a candidate is moved to Rejected stage"
 ##   test_all: false
 ##   test_priority: "high_first"
 
