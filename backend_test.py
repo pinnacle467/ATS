@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 
 # Public endpoint from frontend/.env
-BASE_URL = "https://b2b011a2-c28e-4722-ace2-04a2a0b400ea.preview.emergentagent.com/api"
+BASE_URL = "https://ats-import-flow.preview.emergentagent.com/api"
 
 # Test credentials from /app/memory/test_credentials.md
 CREDENTIALS = {
@@ -67,6 +67,11 @@ class ATSTester:
             if success:
                 self.tests_passed += 1
                 self.log(f"✅ PASS - Status: {response.status_code}", Colors.GREEN)
+                # For file downloads, return binary content
+                if 'application/pdf' in response.headers.get('Content-Type', '') or \
+                   'application/vnd.openxmlformats-officedocument' in response.headers.get('Content-Type', '') or \
+                   'application/octet-stream' in response.headers.get('Content-Type', ''):
+                    return True, response.content
                 try:
                     return True, response.json()
                 except:
@@ -228,6 +233,225 @@ class ATSTester:
                     self.log(f"   Parsed {len(results)} resumes", Colors.GREEN)
                     for r in results:
                         self.log(f"   - {r.get('filename')}: {r.get('status')}", Colors.GREEN)
+    
+    def test_resume_compression(self):
+        """Test resume auto-compression feature"""
+        self.log("\n" + "="*60, Colors.BLUE)
+        self.log("TESTING: RESUME AUTO-COMPRESSION", Colors.BLUE)
+        self.log("="*60, Colors.BLUE)
+        
+        if 'recruiter' not in self.tokens:
+            self.log("⚠️  Skipping - no recruiter token", Colors.YELLOW)
+            return
+        
+        import io
+        
+        # Test 1: Single PDF upload with compression check
+        self.log("\n📄 Test 1: PDF compression (resume_sarah_chen.pdf)", Colors.BLUE)
+        pdf_path = Path('/app/tests/fixtures/resume_sarah_chen.pdf')
+        if pdf_path.exists():
+            original_size = pdf_path.stat().st_size
+            self.log(f"   Original file size: {original_size} bytes", Colors.YELLOW)
+            
+            with open(pdf_path, 'rb') as f:
+                success, response = self.test(
+                    "POST /api/resumes/parse (PDF with compression)",
+                    "POST",
+                    "/resumes/parse",
+                    200,
+                    token=self.tokens['recruiter'],
+                    files={'file': ('resume_sarah_chen.pdf', f, 'application/pdf')},
+                    timeout=90
+                )
+                
+                if success:
+                    # Verify parsing worked correctly
+                    parsed = response.get('parsed', {})
+                    file_id = response.get('file_id')
+                    
+                    if not parsed.get('name') or not parsed.get('email'):
+                        self.critical_failures.append("PDF parsing failed - missing name or email (compression may have affected text extraction)")
+                        self.log("   ❌ CRITICAL: Parsing incomplete - name or email missing", Colors.RED)
+                    else:
+                        self.log(f"   ✅ Parsing successful: {parsed.get('name')}, {parsed.get('email')}", Colors.GREEN)
+                    
+                    # Test file retrieval and size comparison
+                    if file_id:
+                        success2, file_response = self.test(
+                            "GET /api/files/{file_id} (retrieve compressed PDF)",
+                            "GET",
+                            f"/files/{file_id}",
+                            200,
+                            token=self.tokens['recruiter'],
+                            timeout=10
+                        )
+                        
+                        if success2:
+                            stored_size = len(file_response) if isinstance(file_response, bytes) else len(str(file_response))
+                            self.log(f"   Stored file size: {stored_size} bytes", Colors.YELLOW)
+                            
+                            if stored_size > original_size:
+                                self.critical_failures.append(f"PDF compression FAILED - stored file ({stored_size}B) is LARGER than original ({original_size}B)")
+                                self.log(f"   ❌ CRITICAL: File got LARGER after compression!", Colors.RED)
+                            elif stored_size == original_size:
+                                self.log(f"   ⚠️  File size unchanged (compression had no effect, but this is acceptable)", Colors.YELLOW)
+                            else:
+                                reduction = ((original_size - stored_size) / original_size) * 100
+                                self.log(f"   ✅ Compression successful: {reduction:.1f}% reduction", Colors.GREEN)
+                            
+                            # Verify file is valid PDF (basic check)
+                            if isinstance(file_response, bytes):
+                                if file_response.startswith(b'%PDF'):
+                                    self.log(f"   ✅ Downloaded file is a valid PDF", Colors.GREEN)
+                                else:
+                                    self.critical_failures.append("Downloaded PDF is corrupted (missing PDF header)")
+                                    self.log(f"   ❌ CRITICAL: Downloaded file is NOT a valid PDF!", Colors.RED)
+        else:
+            self.log(f"⚠️  PDF test file not found: {pdf_path}", Colors.YELLOW)
+        
+        # Test 2: DOCX upload with compression check
+        self.log("\n📄 Test 2: DOCX compression (resume_priya_patel.docx)", Colors.BLUE)
+        docx_path = Path('/app/tests/fixtures/resume_priya_patel.docx')
+        if docx_path.exists():
+            original_size = docx_path.stat().st_size
+            self.log(f"   Original file size: {original_size} bytes", Colors.YELLOW)
+            
+            with open(docx_path, 'rb') as f:
+                success, response = self.test(
+                    "POST /api/resumes/parse (DOCX with compression)",
+                    "POST",
+                    "/resumes/parse",
+                    200,
+                    token=self.tokens['recruiter'],
+                    files={'file': ('resume_priya_patel.docx', f, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')},
+                    timeout=90
+                )
+                
+                if success:
+                    # Verify parsing worked correctly
+                    parsed = response.get('parsed', {})
+                    file_id = response.get('file_id')
+                    
+                    if not parsed.get('name') or not parsed.get('email'):
+                        self.critical_failures.append("DOCX parsing failed - missing name or email (compression may have affected text extraction)")
+                        self.log("   ❌ CRITICAL: Parsing incomplete - name or email missing", Colors.RED)
+                    else:
+                        self.log(f"   ✅ Parsing successful: {parsed.get('name')}, {parsed.get('email')}", Colors.GREEN)
+                    
+                    # Test file retrieval and size comparison
+                    if file_id:
+                        success2, file_response = self.test(
+                            "GET /api/files/{file_id} (retrieve compressed DOCX)",
+                            "GET",
+                            f"/files/{file_id}",
+                            200,
+                            token=self.tokens['recruiter'],
+                            timeout=10
+                        )
+                        
+                        if success2:
+                            stored_size = len(file_response) if isinstance(file_response, bytes) else len(str(file_response))
+                            self.log(f"   Stored file size: {stored_size} bytes", Colors.YELLOW)
+                            
+                            if stored_size > original_size:
+                                self.critical_failures.append(f"DOCX compression FAILED - stored file ({stored_size}B) is LARGER than original ({original_size}B)")
+                                self.log(f"   ❌ CRITICAL: File got LARGER after compression!", Colors.RED)
+                            elif stored_size == original_size:
+                                self.log(f"   ⚠️  File size unchanged (compression had no effect, but this is acceptable)", Colors.YELLOW)
+                            else:
+                                reduction = ((original_size - stored_size) / original_size) * 100
+                                self.log(f"   ✅ Compression successful: {reduction:.1f}% reduction", Colors.GREEN)
+                            
+                            # Verify file is valid DOCX (basic check - DOCX is a ZIP file)
+                            if isinstance(file_response, bytes):
+                                if file_response.startswith(b'PK'):
+                                    self.log(f"   ✅ Downloaded file is a valid DOCX (ZIP format)", Colors.GREEN)
+                                else:
+                                    self.critical_failures.append("Downloaded DOCX is corrupted (missing ZIP header)")
+                                    self.log(f"   ❌ CRITICAL: Downloaded file is NOT a valid DOCX!", Colors.RED)
+        else:
+            self.log(f"⚠️  DOCX test file not found: {docx_path}", Colors.YELLOW)
+        
+        # Test 3: Bulk upload with compression
+        self.log("\n📄 Test 3: Bulk upload with compression", Colors.BLUE)
+        pdf1_path = Path('/app/tests/fixtures/resume_sarah_chen.pdf')
+        pdf2_path = Path('/app/tests/fixtures/resume_miguel_torres.pdf')
+        
+        if pdf1_path.exists() and pdf2_path.exists():
+            original_sizes = {
+                'resume_sarah_chen.pdf': pdf1_path.stat().st_size,
+                'resume_miguel_torres.pdf': pdf2_path.stat().st_size
+            }
+            self.log(f"   Original sizes: Sarah={original_sizes['resume_sarah_chen.pdf']}B, Miguel={original_sizes['resume_miguel_torres.pdf']}B", Colors.YELLOW)
+            
+            with open(pdf1_path, 'rb') as f1, open(pdf2_path, 'rb') as f2:
+                files = [
+                    ('files', ('resume_sarah_chen.pdf', f1.read(), 'application/pdf')),
+                    ('files', ('resume_miguel_torres.pdf', f2.read(), 'application/pdf'))
+                ]
+                success, response = self.test(
+                    "POST /api/resumes/parse-bulk (2 PDFs with compression)",
+                    "POST",
+                    "/resumes/parse-bulk",
+                    200,
+                    token=self.tokens['recruiter'],
+                    files=files,
+                    timeout=120
+                )
+                
+                if success:
+                    results = response.get('results', [])
+                    self.log(f"   Parsed {len(results)} resumes", Colors.GREEN)
+                    
+                    for result in results:
+                        filename = result.get('filename')
+                        status = result.get('status')
+                        file_id = result.get('file_id')
+                        parsed = result.get('parsed', {})
+                        
+                        if status != 'success':
+                            self.critical_failures.append(f"Bulk upload failed for {filename}: {result.get('error')}")
+                            self.log(f"   ❌ {filename}: {status} - {result.get('error')}", Colors.RED)
+                        elif not parsed.get('name'):
+                            self.critical_failures.append(f"Bulk upload parsing incomplete for {filename}")
+                            self.log(f"   ❌ {filename}: Parsing incomplete", Colors.RED)
+                        else:
+                            self.log(f"   ✅ {filename}: {status}, parsed {parsed.get('name')}", Colors.GREEN)
+        else:
+            self.log(f"⚠️  Bulk test files not found", Colors.YELLOW)
+        
+        # Test 4: Sanity check - verify other endpoints unaffected
+        self.log("\n📄 Test 4: Sanity checks (no regressions)", Colors.BLUE)
+        
+        # Check jobs endpoint
+        self.test(
+            "GET /api/jobs (sanity check)",
+            "GET",
+            "/jobs",
+            200,
+            token=self.tokens['recruiter'],
+            timeout=10
+        )
+        
+        # Check candidates endpoint
+        self.test(
+            "GET /api/candidates?limit=5 (sanity check)",
+            "GET",
+            "/candidates?limit=5",
+            200,
+            token=self.tokens['recruiter'],
+            timeout=10
+        )
+        
+        # Check dashboard stats
+        self.test(
+            "GET /api/dashboard/stats (sanity check)",
+            "GET",
+            "/dashboard/stats",
+            200,
+            token=self.tokens['recruiter'],
+            timeout=10
+        )
     
     def test_candidates(self):
         """Test candidates CRUD operations"""
@@ -1223,6 +1447,7 @@ def main():
     # Run all tests
     tester.test_auth()
     tester.test_rbac()
+    tester.test_resume_compression()  # NEW: Test resume auto-compression feature
     tester.test_resume_parsing()
     tester.test_candidates()
     tester.test_bulk_delete()  # NEW: Test bulk delete feature

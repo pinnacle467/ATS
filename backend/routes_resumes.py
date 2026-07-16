@@ -6,6 +6,7 @@ from fastapi.responses import Response
 
 from auth import get_current_user, require_roles
 from database import db
+from resume_compressor import compress_resume
 from resume_parser import extract_text_from_bytes, low_confidence_fields, parse_resume_text
 from utils import new_id, now_iso
 
@@ -15,6 +16,10 @@ MAX_SIZE = 10 * 1024 * 1024  # 10 MB
 
 
 async def _store_file(data: bytes, filename: str, content_type: str, user_id: str) -> str:
+    try:
+        data = await asyncio.to_thread(compress_resume, data, filename)
+    except Exception:
+        pass  # never block storage on a compression hiccup — store original bytes
     fid = new_id()
     await db.files.insert_one({
         'id': fid,
