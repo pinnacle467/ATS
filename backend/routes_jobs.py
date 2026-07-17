@@ -1,10 +1,13 @@
+import base64
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from auth import get_current_user, require_roles
 from database import db
+from fit_scorer import recompute_job_candidates_fit
+from resume_parser import extract_text_from_bytes
 from utils import clean, log_activity, log_audit, new_id, now_iso
 
 router = APIRouter(prefix='/jobs', tags=['jobs'])
@@ -43,6 +46,7 @@ async def list_jobs(status: Optional[str] = None, department: Optional[str] = No
     # attach candidate counts
     for j in jobs:
         j['candidate_count'] = await db.candidates.count_documents({'job_id': j['id'], 'status': 'active'})
+        j['has_jd'] = bool(j.get('jd_text'))
     return jobs
 
 
@@ -51,6 +55,7 @@ async def get_job(job_id: str, user: dict = Depends(get_current_user)):
     job = await db.jobs.find_one({'id': job_id}, {'_id': 0})
     if not job:
         raise HTTPException(status_code=404, detail='Job not found')
+    job['has_jd'] = bool(job.get('jd_text'))
     return job
 
 
@@ -97,4 +102,58 @@ async def delete_job(job_id: str, user: dict = Depends(require_roles('admin'))):
         raise HTTPException(status_code=404, detail='Job not found')
     await db.jobs.delete_one({'id': job_id})
     await log_audit(user, 'job_deleted', 'job', job_id, job.get('title', ''))
+    return {'ok': True}
+
+
+@router.post('/{job_id}/jd')
+async def upload_jd(
+    job_id: str,
+    background_tasks: BackgroundTasks,
+    text: Optional[str] = Form(None),
+    file: Optional[UploadFile] = File(None),
+    user: dict = Depends(require_roles('admin', 'recruiter')),
+):
+    job = await db.jobs.find_one({'id': job_id})
+    if not job:
+        raise HTTPException(status_code=404, detail='Job not found')
+
+    jd_file_id = None
+    jd_filename = None
+    if file is not None and file.filename:
+        data = await file.read()
+        try:
+            jd_text = extract_text_from_bytes(data, file.filename)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        if len(jd_text) < 20:
+            raise HTTPException(status_code=422, detail='Could not extract readable text from this file')
+        jd_file_id = new_id()
+        await db.files.insert_one({
+            'id': jd_file_id, 'filename': file.filename, 'content_type': file.content_type or 'application/octet-stream',
+            'size': len(data), 'data_b64': base64.b64encode(data).decode(), 'uploaded_by': user['id'], 'created_at': now_iso(),
+        })
+        jd_filename = file.filename
+    elif text and text.strip():
+        jd_text = text.strip()
+    else:
+        raise HTTPException(status_code=422, detail='Provide either JD text or a file')
+
+    await db.jobs.update_one({'id': job_id}, {'$set': {
+        'jd_text': jd_text, 'jd_file_id': jd_file_id, 'jd_filename': jd_filename, 'jd_updated_at': now_iso(),
+    }})
+    await log_audit(user, 'jd_updated', 'job', job_id, job['title'])
+    background_tasks.add_task(recompute_job_candidates_fit, job_id)
+    updated = await db.jobs.find_one({'id': job_id}, {'_id': 0})
+    updated['has_jd'] = True
+    return clean(updated)
+
+
+@router.delete('/{job_id}/jd')
+async def delete_jd(job_id: str, user: dict = Depends(require_roles('admin', 'recruiter'))):
+    job = await db.jobs.find_one({'id': job_id})
+    if not job:
+        raise HTTPException(status_code=404, detail='Job not found')
+    await db.jobs.update_one({'id': job_id}, {'$set': {'jd_text': None, 'jd_file_id': None, 'jd_filename': None, 'jd_updated_at': None}})
+    await db.candidates.update_many({'job_id': job_id}, {'$set': {'fit_score': None, 'fit_score_summary': None, 'fit_score_computed_at': None}})
+    await log_audit(user, 'jd_removed', 'job', job_id, job['title'])
     return {'ok': True}

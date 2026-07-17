@@ -1,10 +1,14 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, MapPin, Users } from 'lucide-react';
+import { ArrowLeft, FileText, MapPin, Trash2, Upload, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
 import { StageBadge, SOURCES, ResumeIndicator } from '@/pages/CandidatesPage';
+import { JdIndicator } from '@/pages/JobsPage';
 import { api, errMsg } from '@/lib/api';
 
 const STATUS_STYLE = {
@@ -22,6 +26,10 @@ export default function JobDetailPage() {
   const [candidates, setCandidates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [jdDialogOpen, setJdDialogOpen] = useState(false);
+  const [jdText, setJdText] = useState('');
+  const [jdSaving, setJdSaving] = useState(false);
+  const jdFileRef = useRef();
 
   const load = useCallback(() => {
     setLoading(true);
@@ -43,6 +51,55 @@ export default function JobDetailPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const openJdDialog = () => {
+    setJdText(job.jd_text || '');
+    setJdDialogOpen(true);
+  };
+
+  const saveJdText = async () => {
+    if (!jdText.trim()) return toast.error('Enter the job description text');
+    setJdSaving(true);
+    try {
+      const fd = new FormData();
+      fd.append('text', jdText.trim());
+      await api.post(`/jobs/${id}/jd`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      toast.success('Job description saved — matching candidates now');
+      setJdDialogOpen(false);
+      load();
+    } catch (e) {
+      toast.error(errMsg(e, 'Could not save job description'));
+    } finally {
+      setJdSaving(false);
+    }
+  };
+
+  const uploadJdFile = async (file) => {
+    setJdSaving(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      await api.post(`/jobs/${id}/jd`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      toast.success('Job description uploaded — matching candidates now');
+      setJdDialogOpen(false);
+      load();
+    } catch (e) {
+      toast.error(errMsg(e, 'Could not upload job description'));
+    } finally {
+      setJdSaving(false);
+    }
+  };
+
+  const removeJd = async () => {
+    if (!window.confirm('Remove the job description? Candidate fit scores for this job will be cleared.')) return;
+    try {
+      await api.delete(`/jobs/${id}/jd`);
+      toast.success('Job description removed');
+      load();
+    } catch (e) {
+      toast.error(errMsg(e, 'Could not remove job description'));
+    }
+  };
 
   if (notFound) {
     return (
@@ -105,6 +162,32 @@ export default function JobDetailPage() {
           <CardContent className="pt-5 text-sm text-muted-foreground">{job.description}</CardContent>
         </Card>
       )}
+
+      <Card className="shadow-none" data-testid="job-jd-card">
+        <CardHeader className="pb-2 flex-row items-center justify-between space-y-0">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <FileText className="h-4 w-4" /> Job Description
+            <JdIndicator hasJd={job.has_jd} />
+          </CardTitle>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={openJdDialog} data-testid="job-jd-edit-button">
+              {job.has_jd ? 'Edit JD' : 'Add JD'}
+            </Button>
+            {job.has_jd && (
+              <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={removeJd} data-testid="job-jd-remove-button">
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {job.has_jd ? (
+            <p className="text-sm text-muted-foreground whitespace-pre-wrap max-h-40 overflow-y-auto thin-scroll" data-testid="job-jd-text">{job.jd_text}</p>
+          ) : (
+            <p className="text-sm text-muted-foreground py-2 text-center">No job description attached yet. Add one so candidate resumes can be auto-matched and scored.</p>
+          )}
+        </CardContent>
+      </Card>
 
       <Card className="shadow-none">
         <CardHeader className="pb-2">
@@ -184,6 +267,55 @@ export default function JobDetailPage() {
           ))}
         </div>
       </div>
+
+      <Dialog open={jdDialogOpen} onOpenChange={setJdDialogOpen}>
+        <DialogContent className="sm:max-w-lg" data-testid="job-jd-dialog">
+          <DialogHeader><DialogTitle>{job.has_jd ? 'Edit Job Description' : 'Add Job Description'}</DialogTitle></DialogHeader>
+          <Tabs defaultValue="text">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="text" data-testid="job-jd-tab-text">Paste Text</TabsTrigger>
+              <TabsTrigger value="file" data-testid="job-jd-tab-file">Upload File</TabsTrigger>
+            </TabsList>
+            <TabsContent value="text" className="space-y-3">
+              <Textarea
+                rows={10}
+                value={jdText}
+                onChange={(e) => setJdText(e.target.value)}
+                placeholder="Paste the full job description here..."
+                data-testid="job-jd-textarea"
+              />
+              <Button className="w-full" onClick={saveJdText} disabled={jdSaving} data-testid="job-jd-save-text-button">
+                Save Job Description
+              </Button>
+            </TabsContent>
+            <TabsContent value="file" className="space-y-3">
+              <div
+                className="border-2 border-dashed rounded-xl p-6 text-center text-sm text-muted-foreground cursor-pointer hover:border-primary/50 transition-colors"
+                onClick={() => jdFileRef.current?.click()}
+              >
+                <Upload className="h-5 w-5 mx-auto mb-2" />
+                Click to choose a PDF or DOCX file
+              </div>
+              <input
+                ref={jdFileRef}
+                type="file"
+                accept=".pdf,.docx"
+                className="hidden"
+                data-testid="job-jd-file-input"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) uploadJdFile(f);
+                  e.target.value = '';
+                }}
+              />
+              {jdSaving && <p className="text-xs text-center text-muted-foreground">Uploading & extracting text...</p>}
+            </TabsContent>
+          </Tabs>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setJdDialogOpen(false)}>Cancel</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

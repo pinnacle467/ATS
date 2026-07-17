@@ -2,12 +2,13 @@ import csv
 import io
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from auth import get_current_user, interviewer_candidate_ids, require_roles
 from database import db
+from fit_scorer import recompute_candidate_fit
 from utils import clean, log_activity, log_audit, new_id, notify, now_iso
 
 router = APIRouter(prefix='/candidates', tags=['candidates'])
@@ -180,7 +181,7 @@ async def get_candidate(candidate_id: str, user: dict = Depends(get_current_user
 
 
 @router.post('')
-async def create_candidate(body: CandidateCreate, user: dict = Depends(require_roles('admin', 'recruiter'))):
+async def create_candidate(body: CandidateCreate, background_tasks: BackgroundTasks, user: dict = Depends(require_roles('admin', 'recruiter'))):
     stage = body.stage
     if body.job_id and not stage:
         job = await db.jobs.find_one({'id': body.job_id})
@@ -206,6 +207,9 @@ async def create_candidate(body: CandidateCreate, user: dict = Depends(require_r
         'notice_period': body.notice_period,
         'status': 'active',
         'rejection_reason': None,
+        'fit_score': None,
+        'fit_score_summary': None,
+        'fit_score_computed_at': None,
         'applied_at': now_iso(),
         'hired_at': None,
         'created_at': now_iso(),
@@ -216,11 +220,13 @@ async def create_candidate(body: CandidateCreate, user: dict = Depends(require_r
     if body.notes:
         await db.notes.insert_one({'id': new_id(), 'candidate_id': cand['id'], 'author_id': user['id'],
                                    'author_name': user['name'], 'text': body.notes, 'note_type': 'note', 'created_at': now_iso()})
+    if cand['job_id']:
+        background_tasks.add_task(recompute_candidate_fit, cand['id'])
     return clean(cand)
 
 
 @router.put('/{candidate_id}')
-async def update_candidate(candidate_id: str, body: CandidateUpdate, user: dict = Depends(require_roles('admin', 'recruiter'))):
+async def update_candidate(candidate_id: str, body: CandidateUpdate, background_tasks: BackgroundTasks, user: dict = Depends(require_roles('admin', 'recruiter'))):
     c = await db.candidates.find_one({'id': candidate_id})
     if not c:
         raise HTTPException(status_code=404, detail='Candidate not found')
@@ -229,6 +235,8 @@ async def update_candidate(candidate_id: str, body: CandidateUpdate, user: dict 
     if 'recruiter_id' in updates and updates['recruiter_id'] != c.get('recruiter_id'):
         await notify(updates['recruiter_id'], 'assignment', f"Candidate {c['name']} was assigned to you", f"/candidates/{candidate_id}")
     await db.candidates.update_one({'id': candidate_id}, {'$set': updates})
+    if 'job_id' in updates and updates['job_id'] != c.get('job_id'):
+        background_tasks.add_task(recompute_candidate_fit, candidate_id)
     return clean(await db.candidates.find_one({'id': candidate_id}, {'_id': 0}))
 
 
@@ -323,7 +331,7 @@ class MergeResume(BaseModel):
 
 
 @router.post('/{candidate_id}/merge-resume')
-async def merge_resume(candidate_id: str, body: MergeResume, user: dict = Depends(require_roles('admin', 'recruiter'))):
+async def merge_resume(candidate_id: str, body: MergeResume, background_tasks: BackgroundTasks, user: dict = Depends(require_roles('admin', 'recruiter'))):
     cand = await db.candidates.find_one({'id': candidate_id})
     if not cand:
         raise HTTPException(status_code=404, detail='Candidate not found')
@@ -340,6 +348,8 @@ async def merge_resume(candidate_id: str, body: MergeResume, user: dict = Depend
     await db.candidates.update_one({'id': candidate_id}, {'$set': updates})
     await log_activity(user, 'resume_merged', f"Matched and merged an uploaded resume into {cand['name']}'s profile", candidate_id=candidate_id)
     await log_audit(user, 'merge_resume', 'candidate', candidate_id, cand['name'])
+    if cand.get('job_id'):
+        background_tasks.add_task(recompute_candidate_fit, candidate_id)
     updated = await db.candidates.find_one({'id': candidate_id})
     updated.pop('_id', None)
     return updated

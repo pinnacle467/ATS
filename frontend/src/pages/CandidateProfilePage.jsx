@@ -15,6 +15,7 @@ import {
   Phone,
   Star,
   Tag,
+  Target,
   Trash2,
 } from 'lucide-react';
 import { renderAsync } from 'docx-preview';
@@ -33,6 +34,12 @@ import { api, errMsg } from '@/lib/api';
 
 const RECO_LABEL = { strong_yes: 'Strong Yes', yes: 'Yes', no: 'No', strong_no: 'Strong No' };
 const RECO_COLOR = { strong_yes: 'bg-green-100 text-green-800', yes: 'bg-emerald-100 text-emerald-800', no: 'bg-orange-100 text-orange-800', strong_no: 'bg-red-100 text-red-800' };
+
+function fitScoreStyle(score) {
+  if (score >= 75) return 'border-green-500 text-green-700 bg-green-50';
+  if (score >= 50) return 'border-amber-500 text-amber-700 bg-amber-50';
+  return 'border-red-500 text-red-700 bg-red-50';
+}
 
 export default function CandidateProfilePage() {
   const { id } = useParams();
@@ -77,6 +84,14 @@ export default function CandidateProfilePage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Fit score is computed async in the background — retry once shortly after load if pending.
+  useEffect(() => {
+    if (cand?.job_id && cand?.job?.jd_text && cand?.fit_score == null) {
+      const t = setTimeout(() => load(), 6000);
+      return () => clearTimeout(t);
+    }
+  }, [cand?.id, cand?.job_id, cand?.fit_score, cand?.job?.jd_text, load]);
 
   useEffect(() => {
     if (isRecruiter) api.get('/jobs').then((r) => setJobs(r.data || [])).catch(() => {});
@@ -329,6 +344,36 @@ export default function CandidateProfilePage() {
               )}
             </CardContent>
           </Card>
+
+          {cand.job_id && (
+            <Card className="shadow-none" data-testid="candidate-fit-score">
+              <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold flex items-center gap-2"><Target className="h-4 w-4" /> Job Fit Score</CardTitle></CardHeader>
+              <CardContent>
+                {cand.fit_score != null ? (
+                  <div className="flex items-center gap-4">
+                    <div
+                      className={`flex items-center justify-center h-16 w-16 rounded-full border-[3px] font-display text-xl font-bold shrink-0 ${fitScoreStyle(cand.fit_score)}`}
+                      data-testid="candidate-fit-score-value"
+                    >
+                      {cand.fit_score}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      {cand.fit_score_summary && <p className="text-sm">{cand.fit_score_summary}</p>}
+                      <p className="text-xs text-muted-foreground font-mono mt-1">
+                        vs. {cand.job?.title || 'job'}{cand.fit_score_computed_at ? ` · scored ${new Date(cand.fit_score_computed_at).toLocaleString()}` : ''}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground py-1" data-testid="candidate-fit-score-pending">
+                    {!cand.job?.jd_text
+                      ? 'This job has no job description attached yet — add one on the Job page to see a fit score.'
+                      : 'Calculating fit score against the job description...'}
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {(cand.experience?.length > 0 || cand.education?.length > 0) && (
             <Card className="shadow-none">

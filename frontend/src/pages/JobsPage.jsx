@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Briefcase, MapPin, Pencil, Plus, Trash2, Users } from 'lucide-react';
+import { Briefcase, FileText, MapPin, Pencil, Plus, Trash2, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -10,8 +10,28 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useAuth } from '@/context/AuthContext';
 import { api, errMsg } from '@/lib/api';
+
+export function JdIndicator({ hasJd }) {
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            data-testid="job-jd-indicator"
+            data-has-jd={hasJd ? 'true' : 'false'}
+            className={`inline-flex items-center justify-center h-5 w-5 rounded-full shrink-0 ${hasJd ? 'text-primary bg-primary/10' : 'text-muted-foreground/50 bg-secondary'}`}
+          >
+            <FileText className="h-3 w-3" />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>{hasJd ? 'Job description attached' : 'No job description attached'}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
 
 const STATUS_STYLE = {
   open: 'bg-green-100 text-green-800',
@@ -148,9 +168,12 @@ export default function JobsPage() {
           >
             <CardContent className="pt-5 space-y-3">
               <div className="flex items-start justify-between gap-2">
-                <div>
-                  <div className="font-display font-semibold">{j.title}</div>
-                  <div className="text-xs text-muted-foreground">{j.department}</div>
+                <div className="flex items-start gap-1.5">
+                  <div>
+                    <div className="font-display font-semibold">{j.title}</div>
+                    <div className="text-xs text-muted-foreground">{j.department}</div>
+                  </div>
+                  <JdIndicator hasJd={j.has_jd} />
                 </div>
                 <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${STATUS_STYLE[j.status]}`}>{j.status.replace('_', ' ')}</span>
               </div>
