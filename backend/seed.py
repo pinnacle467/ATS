@@ -1,19 +1,52 @@
-"""Idempotent demo data seeder — runs on startup when the users collection is empty."""
+"""Data seeder — runs on startup when the users collection is empty.
+Restores the real imported snapshot (backend/data_seed/snapshot.json) when present,
+so real data persists across fresh imports/restarts. Falls back to synthetic demo
+data only when no snapshot has been captured yet."""
+import json
 import random
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from auth import hash_password
 from database import db
 from utils import new_id, now_iso
+
+SNAPSHOT_PATH = Path(__file__).parent / 'data_seed' / 'snapshot.json'
 
 
 def iso(dt):
     return dt.isoformat()
 
 
+async def _restore_snapshot() -> bool:
+    if not SNAPSHOT_PATH.exists():
+        return False
+    with open(SNAPSHOT_PATH) as f:
+        snap = json.load(f)
+    collections = ['users', 'jobs', 'candidates', 'interviews', 'notes', 'activities',
+                   'scorecards', 'departments', 'tags', 'interview_kits', 'availability', 'audit_log', 'files']
+    for name in collections:
+        docs = snap.get(name) or []
+        if docs:
+            await db[name].insert_many([dict(d) for d in docs])
+    pipeline = snap.get('pipeline')
+    if pipeline:
+        await db.settings.update_one({'key': 'pipeline_stages'}, {'$set': {'stages': pipeline['stages']}}, upsert=True)
+    await db.candidates.create_index('job_id')
+    await db.candidates.create_index('stage')
+    await db.candidates.create_index('email')
+    await db.interviews.create_index('scheduled_at')
+    await db.interviews.create_index('interviewer_ids')
+    await db.notifications.create_index('user_id')
+    await db.activities.create_index('created_at')
+    return True
+
+
 async def seed_if_empty():
     if await db.users.count_documents({}) > 0:
         return False
+    if await _restore_snapshot():
+        return True
     now = datetime.now(timezone.utc)
 
     # ---- Users ----

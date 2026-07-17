@@ -60,7 +60,7 @@ logger = logging.getLogger(__name__)
 async def startup():
     created = await seed_if_empty()
     if created:
-        logger.info('Seeded demo data')
+        logger.info('Seeded database (from snapshot or demo data)')
 
 
 @app.on_event('shutdown')
