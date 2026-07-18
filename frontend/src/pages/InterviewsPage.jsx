@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { addDays, format, isSameDay, startOfWeek } from 'date-fns';
-import { BookOpen, CalendarPlus, CheckCircle2, ChevronLeft, ChevronRight, ClipboardList, MapPin, Video, XCircle } from 'lucide-react';
+import { BookOpen, CalendarCheck2, CalendarPlus, CheckCircle2, ChevronLeft, ChevronRight, ClipboardList, Link2Off, MapPin, Video, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -29,6 +29,7 @@ const TYPE_LABEL = { phone_screen: 'Phone Screen', technical: 'Technical', panel
 
 export default function InterviewsPage() {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [interviews, setInterviews] = useState([]);
   const [users, setUsers] = useState([]);
   const [jobs, setJobs] = useState([]);
@@ -41,8 +42,57 @@ export default function InterviewsPage() {
   const [viewScores, setViewScores] = useState(null);
   const [scores, setScores] = useState([]);
   const [kitOpen, setKitOpen] = useState(null);
+  const [calStatus, setCalStatus] = useState(null);
+  const [calBusy, setCalBusy] = useState(false);
 
   const isRecruiter = user?.role === 'admin' || user?.role === 'recruiter';
+
+  const loadCalStatus = useCallback(() => {
+    if (!isRecruiter) return;
+    api.get('/calendar/status').then((r) => setCalStatus(r.data)).catch(() => {});
+  }, [isRecruiter]);
+
+  useEffect(() => {
+    loadCalStatus();
+  }, [loadCalStatus]);
+
+  useEffect(() => {
+    const cal = searchParams.get('calendar');
+    if (!cal) return;
+    if (cal === 'connected') {
+      toast.success('Google Calendar connected — new interviews will sync automatically');
+      loadCalStatus();
+    } else if (cal === 'error') {
+      toast.error('Could not connect Google Calendar. Please try again.');
+    }
+    searchParams.delete('calendar');
+    setSearchParams(searchParams, { replace: true });
+  }, [searchParams, setSearchParams, loadCalStatus]);
+
+  const connectCalendar = async () => {
+    setCalBusy(true);
+    try {
+      const r = await api.get('/oauth/google/login');
+      window.location.href = r.data.authorization_url;
+    } catch (e) {
+      toast.error(errMsg(e, 'Could not start Google connection'));
+      setCalBusy(false);
+    }
+  };
+
+  const disconnectCalendar = async () => {
+    if (!window.confirm('Disconnect Google Calendar? Future interviews will no longer sync automatically.')) return;
+    setCalBusy(true);
+    try {
+      await api.post('/calendar/disconnect');
+      toast.success('Google Calendar disconnected');
+      loadCalStatus();
+    } catch (e) {
+      toast.error(errMsg(e));
+    } finally {
+      setCalBusy(false);
+    }
+  };
 
   const load = useCallback(() => {
     const params = {};
@@ -102,7 +152,14 @@ export default function InterviewsPage() {
       <div className="bg-card border border-border rounded-lg p-2.5 space-y-1.5 hover:shadow-sm transition-shadow" data-testid={`interview-card-${iv.id}`}>
         <div className="flex items-start justify-between gap-1">
           <Link to={`/candidates/${iv.candidate_id}`} className="text-sm font-medium hover:underline leading-tight">{iv.candidate_name}</Link>
-          <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium whitespace-nowrap ${STATUS_STYLE[iv.status]}`}>{STATUS_LABEL[iv.status]}</span>
+          <div className="flex items-center gap-1 shrink-0">
+            {iv.calendar_synced && (
+              <span title="Synced to Google Calendar" data-testid={`interview-calendar-synced-${iv.id}`}>
+                <CalendarCheck2 className="h-3 w-3 text-primary" />
+              </span>
+            )}
+            <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium whitespace-nowrap ${STATUS_STYLE[iv.status]}`}>{STATUS_LABEL[iv.status]}</span>
+          </div>
         </div>
         <div className="text-xs text-muted-foreground">
           {format(new Date(iv.scheduled_at), 'p')} · {iv.duration_min}m · {TYPE_LABEL[iv.type] || iv.type}
@@ -168,6 +225,30 @@ export default function InterviewsPage() {
           )}
         </div>
       </div>
+
+      {isRecruiter && calStatus && (
+        <Card className="shadow-none" data-testid="google-calendar-card">
+          <CardContent className="py-3 flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2 text-sm">
+              <CalendarCheck2 className={`h-4 w-4 ${calStatus.connected ? 'text-primary' : 'text-muted-foreground'}`} />
+              {calStatus.connected ? (
+                <span data-testid="google-calendar-connected-label">Google Calendar connected as <span className="font-medium">{calStatus.email}</span> — interviews you schedule sync automatically.</span>
+              ) : (
+                <span className="text-muted-foreground">Connect Google Calendar to auto-create events with Meet links when you schedule interviews.</span>
+              )}
+            </div>
+            {calStatus.connected ? (
+              <Button size="sm" variant="outline" onClick={disconnectCalendar} disabled={calBusy} data-testid="google-calendar-disconnect-button">
+                <Link2Off className="h-3.5 w-3.5 mr-1" /> Disconnect
+              </Button>
+            ) : (
+              <Button size="sm" onClick={connectCalendar} disabled={calBusy} data-testid="google-calendar-connect-button">
+                <CalendarCheck2 className="h-3.5 w-3.5 mr-1" /> Connect Google Calendar
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2">

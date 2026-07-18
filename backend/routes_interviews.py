@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+import os
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -6,11 +7,65 @@ from pydantic import BaseModel
 
 from auth import get_current_user, require_roles
 from database import db
+from google_calendar import create_event, delete_event, get_credentials_for_user, update_event
 from utils import clean, log_activity, log_audit, new_id, notify, now_iso
 
 router = APIRouter(tags=['interviews'])
 
 DEFAULT_ATTRS = ['Communication', 'Technical Skill', 'Problem Solving', 'Culture Fit']
+
+
+async def _sync_calendar_on_create(user: dict, iv: dict, cand: dict):
+    creds = await get_credentials_for_user(user)
+    if not creds:
+        return
+    interviewers = await db.users.find({'id': {'$in': iv['interviewer_ids']}}, {'_id': 0, 'email': 1}).to_list(20)
+    attendees = [i['email'] for i in interviewers if i.get('email')] + ([cand['email']] if cand.get('email') else [])
+    start = datetime.fromisoformat(iv['scheduled_at'].replace('Z', '+00:00'))
+    end = start + timedelta(minutes=iv['duration_min'])
+    try:
+        event = create_event(
+            creds,
+            summary=f"Interview: {cand['name']} ({iv['type'].replace('_', ' ').title()})",
+            description=(iv.get('notes') or '') + f"\n\nCandidate profile: {os.environ['APP_BASE_URL']}/candidates/{cand['id']}",
+            start_iso=start.isoformat(), end_iso=end.isoformat(),
+            attendee_emails=attendees, location=iv.get('location'), add_meet=not bool(iv.get('video_link')),
+        )
+    except Exception:
+        return
+    meet_link = event.get('hangoutLink')
+    updates = {'google_event_id': event['id'], 'google_event_link': event.get('htmlLink'), 'calendar_synced': True}
+    if meet_link and not iv.get('video_link'):
+        updates['video_link'] = meet_link
+    await db.interviews.update_one({'id': iv['id']}, {'$set': updates})
+
+
+async def _sync_calendar_on_update(user: dict, iv: dict, updates: dict):
+    if not iv.get('google_event_id'):
+        return
+    creds = await get_credentials_for_user(user)
+    if not creds:
+        return
+    try:
+        if updates.get('status') == 'cancelled':
+            delete_event(creds, iv['google_event_id'])
+            return
+        fields = {}
+        if 'scheduled_at' in updates or 'duration_min' in updates:
+            start = datetime.fromisoformat(updates.get('scheduled_at', iv['scheduled_at']).replace('Z', '+00:00'))
+            end = start + timedelta(minutes=updates.get('duration_min', iv['duration_min']))
+            fields['start_iso'] = start.isoformat()
+            fields['end_iso'] = end.isoformat()
+        if 'interviewer_ids' in updates:
+            interviewers = await db.users.find({'id': {'$in': updates['interviewer_ids']}}, {'_id': 0, 'email': 1}).to_list(20)
+            cand = await db.candidates.find_one({'id': iv['candidate_id']}, {'_id': 0, 'email': 1})
+            fields['attendee_emails'] = [i['email'] for i in interviewers if i.get('email')] + ([cand['email']] if cand and cand.get('email') else [])
+        if 'location' in updates:
+            fields['location'] = updates['location']
+        if fields:
+            update_event(creds, iv['google_event_id'], **fields)
+    except Exception:
+        return
 
 
 class InterviewCreate(BaseModel):
@@ -121,7 +176,8 @@ async def create_interview(body: InterviewCreate, user: dict = Depends(require_r
     await log_activity(user, 'interview_scheduled', f"scheduled a {body.type.replace('_', ' ')} interview for {cand['name']}", candidate_id=cand['id'], job_id=iv['job_id'])
     for iid in body.interviewer_ids:
         await notify(iid, 'interview', f"You have been assigned a {body.type.replace('_', ' ')} interview with {cand['name']}", '/interviews')
-    return clean(iv)
+    await _sync_calendar_on_create(user, iv, cand)
+    return clean(await db.interviews.find_one({'id': iv['id']}, {'_id': 0}))
 
 
 @router.put('/interviews/{interview_id}')
@@ -136,6 +192,7 @@ async def update_interview(interview_id: str, body: InterviewUpdate, user: dict 
         for iid in iv.get('interviewer_ids', []):
             await notify(iid, 'interview', f"Interview with {cand['name'] if cand else 'candidate'} was cancelled", '/interviews')
         await log_activity(user, 'interview_cancelled', f"cancelled interview for {cand['name'] if cand else 'candidate'}", candidate_id=iv['candidate_id'])
+    await _sync_calendar_on_update(user, iv, updates)
     return clean(await db.interviews.find_one({'id': interview_id}, {'_id': 0}))
 
 

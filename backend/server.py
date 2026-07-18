@@ -21,6 +21,7 @@ import routes_dashboard
 import routes_admin
 import routes_notifications
 import routes_imports
+import routes_calendar
 
 app = FastAPI(title='Pinnacle ATS')
 
@@ -41,6 +42,7 @@ api_router.include_router(routes_dashboard.router)
 api_router.include_router(routes_admin.router)
 api_router.include_router(routes_notifications.router)
 api_router.include_router(routes_imports.router)
+api_router.include_router(routes_calendar.router)
 
 app.include_router(api_router)
 
