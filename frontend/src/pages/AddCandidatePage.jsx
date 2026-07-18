@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, ArrowLeft, CheckCircle2, FileUp, Loader2, Plus, Trash2, Upload, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CheckCircle2, FileUp, FolderUp, Loader2, Plus, Save, Trash2, Upload, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { api, errMsg } from '@/lib/api';
@@ -249,14 +250,17 @@ export default function AddCandidatePage() {
   const navigate = useNavigate();
   const fileRef = useRef();
   const bulkRef = useRef();
+  const folderRef = useRef();
   const [jobs, setJobs] = useState([]);
   const [tags, setTags] = useState([]);
   const [parsing, setParsing] = useState(false);
-  const [bulkProgress, setBulkProgress] = useState(null);
+  const [bulkProgress, setBulkProgress] = useState(null); // { current, total, phase }
   const [drafts, setDrafts] = useState([]);
   const [manualMode, setManualMode] = useState(false);
   const [savingIdx, setSavingIdx] = useState(null);
   const [dragOver, setDragOver] = useState(false);
+  const [bulkJobId, setBulkJobId] = useState('');
+  const [savingAll, setSavingAll] = useState(false);
 
   useEffect(() => {
     Promise.all([api.get('/jobs'), api.get('/tags')]).then(([j, t]) => {
@@ -280,34 +284,102 @@ export default function AddCandidatePage() {
     }
   };
 
+  // Chunked bulk parse: processes files in batches of 10 (backend limit is 25 per request)
+  // so we can support dragging entire folders of resumes.
   const parseBulk = async (files) => {
     setParsing(true);
-    setBulkProgress(`Parsing ${files.length} resumes...`);
+    const CHUNK = 10;
+    const chunks = [];
+    for (let i = 0; i < files.length; i += CHUNK) chunks.push(files.slice(i, i + CHUNK));
+    let done = 0;
+    let okCount = 0;
+    const errors = [];
+    setBulkProgress({ current: 0, total: files.length, phase: 'Parsing' });
     try {
-      const fd = new FormData();
-      files.forEach((f) => fd.append('files', f));
-      const r = await api.post('/resumes/parse-bulk', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
-      const ok = r.data.results.filter((x) => x.status === 'success');
-      const bad = r.data.results.filter((x) => x.status === 'error');
-      setDrafts((d) => [...d, ...ok.map(parsedToDraft)]);
-      if (ok.length) toast.success(`Parsed ${ok.length} resume${ok.length === 1 ? '' : 's'} successfully`);
-      bad.forEach((b) => toast.error(`${b.filename}: ${b.error}`));
-    } catch (e) {
-      toast.error(errMsg(e, 'Bulk parsing failed'));
+      for (const batch of chunks) {
+        const fd = new FormData();
+        batch.forEach((f) => fd.append('files', f));
+        try {
+          const r = await api.post('/resumes/parse-bulk', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+          const ok = r.data.results.filter((x) => x.status === 'success');
+          const bad = r.data.results.filter((x) => x.status === 'error');
+          setDrafts((d) => [...d, ...ok.map(parsedToDraft)]);
+          okCount += ok.length;
+          bad.forEach((b) => errors.push(`${b.filename}: ${b.error}`));
+        } catch (e) {
+          batch.forEach((f) => errors.push(`${f.name}: ${errMsg(e, 'batch failed')}`));
+        }
+        done += batch.length;
+        setBulkProgress({ current: done, total: files.length, phase: 'Parsing' });
+      }
+      if (okCount) toast.success(`Parsed ${okCount} resume${okCount === 1 ? '' : 's'} successfully`);
+      if (errors.length) {
+        // group errors into one toast to avoid spam when folder has many bad files
+        const shown = errors.slice(0, 3).join('\n');
+        toast.error(`${errors.length} file${errors.length === 1 ? '' : 's'} failed:\n${shown}${errors.length > 3 ? `\n…and ${errors.length - 3} more` : ''}`);
+      }
     } finally {
       setParsing(false);
       setBulkProgress(null);
     }
   };
 
+  // Recursively walk a FileSystemEntry (folder or file) yielding File objects
+  const readEntry = (entry) => new Promise((resolve) => {
+    if (entry.isFile) {
+      entry.file((file) => resolve([file]), () => resolve([]));
+    } else if (entry.isDirectory) {
+      const reader = entry.createReader();
+      const all = [];
+      const readBatch = () => {
+        reader.readEntries(async (results) => {
+          if (!results.length) {
+            const nested = await Promise.all(all.map(readEntry));
+            resolve(nested.flat());
+          } else {
+            all.push(...results);
+            readBatch();
+          }
+        }, () => resolve([]));
+      };
+      readBatch();
+    } else {
+      resolve([]);
+    }
+  });
+
+  const extractFilesFromDrop = async (dataTransfer) => {
+    const items = dataTransfer.items;
+    if (items && items.length && items[0].webkitGetAsEntry) {
+      const entries = [];
+      for (let i = 0; i < items.length; i++) {
+        const e = items[i].webkitGetAsEntry?.();
+        if (e) entries.push(e);
+      }
+      if (entries.length) {
+        const collected = await Promise.all(entries.map(readEntry));
+        return collected.flat();
+      }
+    }
+    return Array.from(dataTransfer.files || []);
+  };
+
   const onFiles = (fileList, bulk) => {
     const files = Array.from(fileList).filter((f) => /\.(pdf|docx)$/i.test(f.name));
     if (files.length === 0) {
-      toast.error('Please upload PDF or DOCX files');
+      toast.error('No PDF or DOCX files found in the selection');
       return;
     }
-    if (bulk || files.length > 1) parseBulk(files.slice(0, 10));
-    else parseSingle(files[0]);
+    if (files.length === 1 && !bulk) parseSingle(files[0]);
+    else parseBulk(files.slice(0, 100));
+    if (files.length > 100) toast.warning(`Only processing the first 100 resumes (found ${files.length}). Add the rest in another batch.`);
+  };
+
+  const onDrop = async (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    const files = await extractFilesFromDrop(e.dataTransfer);
+    onFiles(files, true);
   };
 
   const saveDraft = async (idx) => {
@@ -357,6 +429,59 @@ export default function AddCandidatePage() {
     }
   };
 
+  // Save every draft that doesn't need a merge decision, using bulkJobId when a draft
+  // doesn't already have a job. Skips drafts flagged with a "same-person" match banner
+  // so the recruiter can review those manually.
+  const saveAllDrafts = async () => {
+    const eligible = drafts.map((d, i) => ({ d, i })).filter(({ d }) => {
+      if (d._match) return false; // needs manual review
+      if (!d.name?.trim()) return false;
+      if (d.email && !EMAIL_RE.test(d.email)) return false;
+      return true;
+    });
+    if (!eligible.length) {
+      toast.error('No draft is ready to save. Fix names/emails or resolve match banners first.');
+      return;
+    }
+    const needsJob = eligible.some(({ d }) => !d.job_id);
+    if (needsJob && !bulkJobId) {
+      toast.error('Choose a job to assign to drafts that don\'t already have one');
+      return;
+    }
+    setSavingAll(true);
+    setBulkProgress({ current: 0, total: eligible.length, phase: 'Saving to pipeline' });
+    let saved = 0;
+    const failedIdx = [];
+    for (const { d, i } of eligible) {
+      const body = { ...d };
+      delete body._filename;
+      delete body._match;
+      delete body._mergeChoice;
+      if (!body.job_id) body.job_id = bulkJobId;
+      ['email', 'phone', 'current_title', 'current_company', 'location', 'notice_period', 'notes'].forEach((k) => {
+        if (!body[k]) body[k] = null;
+      });
+      try {
+        await api.post('/candidates', body);
+        saved += 1;
+      } catch (e) {
+        failedIdx.push(i);
+      }
+      setBulkProgress({ current: saved + failedIdx.length, total: eligible.length, phase: 'Saving to pipeline' });
+    }
+    // Remove saved drafts, keep failures + match-banner drafts for review
+    const keepSet = new Set([...failedIdx, ...drafts.map((d, i) => (d._match ? i : null)).filter((i) => i !== null)]);
+    setDrafts((ds) => ds.filter((_, i) => keepSet.has(i)));
+    setSavingAll(false);
+    setBulkProgress(null);
+    if (saved) toast.success(`Saved ${saved} candidate${saved === 1 ? '' : 's'} to the pipeline`);
+    if (failedIdx.length) toast.error(`${failedIdx.length} draft${failedIdx.length === 1 ? '' : 's'} failed — review remaining items below`);
+    if (!failedIdx.length && !drafts.some((d) => d._match)) {
+      // clean exit — go to Candidates list
+      navigate('/candidates');
+    }
+  };
+
   return (
     <div className="space-y-5 max-w-4xl">
       <div className="flex items-center gap-3">
@@ -374,18 +499,27 @@ export default function AddCandidatePage() {
         data-testid="resume-upload-dropzone"
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setDragOver(false);
-          onFiles(e.dataTransfer.files);
-        }}
+        onDrop={onDrop}
         className={`border-2 border-dashed rounded-2xl p-8 text-center transition-colors bg-card ${dragOver ? 'border-primary bg-accent' : 'border-border'}`}
       >
-        {parsing ? (
+        {parsing || bulkProgress ? (
           <div className="flex flex-col items-center gap-3 py-4">
             <Loader2 className="h-8 w-8 text-primary animate-spin" />
-            <p className="text-sm font-medium">{bulkProgress || 'Parsing resume with AI...'}</p>
-            <p className="text-xs text-muted-foreground">Extracting name, contact, experience, education & skills</p>
+            <p className="text-sm font-medium" data-testid="bulk-progress-label">
+              {bulkProgress
+                ? `${bulkProgress.phase} ${bulkProgress.current} of ${bulkProgress.total} resume${bulkProgress.total === 1 ? '' : 's'}...`
+                : 'Parsing resume with AI...'}
+            </p>
+            {bulkProgress ? (
+              <div className="w-full max-w-md">
+                <Progress
+                  value={bulkProgress.total ? Math.round((bulkProgress.current / bulkProgress.total) * 100) : 0}
+                  data-testid="bulk-progress-bar"
+                />
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">Extracting name, contact, experience, education & skills</p>
+            )}
           </div>
         ) : (
           <div className="flex flex-col items-center gap-3 py-2">
@@ -393,15 +527,18 @@ export default function AddCandidatePage() {
               <FileUp className="h-6 w-6 text-accent-foreground" />
             </span>
             <div>
-              <p className="text-sm font-medium">Drag & drop resumes here (PDF / DOCX)</p>
-              <p className="text-xs text-muted-foreground mt-0.5">AI will parse and pre-fill candidate profiles for your review</p>
+              <p className="text-sm font-medium">Drag & drop resumes or an entire folder here (PDF / DOCX)</p>
+              <p className="text-xs text-muted-foreground mt-0.5">AI parses each resume in the background — up to 100 files per batch, chunked automatically</p>
             </div>
             <div className="flex flex-wrap gap-2 justify-center">
               <Button variant="outline" onClick={() => fileRef.current?.click()} data-testid="resume-upload-browse-button">
                 <Upload className="h-4 w-4 mr-1" /> Upload Resume
               </Button>
               <Button variant="outline" onClick={() => bulkRef.current?.click()} data-testid="resume-upload-bulk-button">
-                <Upload className="h-4 w-4 mr-1" /> Bulk Upload (up to 10)
+                <Upload className="h-4 w-4 mr-1" /> Bulk Upload Files
+              </Button>
+              <Button variant="outline" onClick={() => folderRef.current?.click()} data-testid="resume-upload-folder-button">
+                <FolderUp className="h-4 w-4 mr-1" /> Upload Folder
               </Button>
               <Button variant="ghost" onClick={() => { setManualMode(true); setDrafts((d) => [...d, emptyDraft()]); }} data-testid="add-manual-button">
                 <Plus className="h-4 w-4 mr-1" /> Add Manually
@@ -411,12 +548,40 @@ export default function AddCandidatePage() {
         )}
         <input ref={fileRef} type="file" accept=".pdf,.docx" className="hidden" onChange={(e) => { onFiles(e.target.files, false); e.target.value = ''; }} />
         <input ref={bulkRef} type="file" accept=".pdf,.docx" multiple className="hidden" onChange={(e) => { onFiles(e.target.files, true); e.target.value = ''; }} />
+        <input
+          ref={folderRef}
+          type="file"
+          className="hidden"
+          multiple
+          webkitdirectory=""
+          data-testid="resume-upload-folder-input"
+          onChange={(e) => { onFiles(e.target.files, true); e.target.value = ''; }}
+        />
       </div>
 
       {/* Review drafts */}
       {drafts.length > 0 && (
         <div className="space-y-4">
-          <h2 className="font-display text-lg font-semibold">Review & Save ({drafts.length})</h2>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="font-display text-lg font-semibold">Review & Save ({drafts.length})</h2>
+            {drafts.length > 1 && (
+              <div className="flex flex-wrap items-center gap-2 bg-card border border-border rounded-xl px-3 py-2" data-testid="bulk-save-bar">
+                <span className="text-xs text-muted-foreground">Assign remaining drafts to</span>
+                <Select value={bulkJobId} onValueChange={setBulkJobId}>
+                  <SelectTrigger className="h-8 w-[220px]" data-testid="bulk-save-job-select"><SelectValue placeholder="Choose a job" /></SelectTrigger>
+                  <SelectContent>
+                    {jobs.filter((j) => j.status === 'open').map((j) => (
+                      <SelectItem key={j.id} value={j.id}>{j.title} · {j.department}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button size="sm" onClick={saveAllDrafts} disabled={savingAll} data-testid="bulk-save-all-button">
+                  {savingAll ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Save className="h-4 w-4 mr-1" />}
+                  Save All ({drafts.filter((d) => !d._match).length})
+                </Button>
+              </div>
+            )}
+          </div>
           {drafts.map((d, i) => (
             <DraftForm
               key={i}

@@ -86,8 +86,8 @@ async def parse_resume(file: UploadFile = File(...), user: dict = Depends(requir
 
 @router.post('/resumes/parse-bulk')
 async def parse_resumes_bulk(files: list[UploadFile] = File(...), user: dict = Depends(require_roles('admin', 'recruiter'))):
-    if len(files) > 10:
-        raise HTTPException(status_code=422, detail='Maximum 10 files per bulk upload')
+    if len(files) > 25:
+        raise HTTPException(status_code=422, detail='Maximum 25 files per bulk request (frontend chunks larger batches)')
     payloads = []
     for f in files:
         payloads.append((await f.read(), f.filename, f.content_type))

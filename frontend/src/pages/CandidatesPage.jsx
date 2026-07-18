@@ -47,6 +47,37 @@ export const ResumeIndicator = ({ hasResume, className = '' }) => (
   </span>
 );
 
+// AI Fit Score badge for the Candidates table. Color-codes 0-100 into three tiers
+// so recruiters can spot strong applicants at a glance. Falls back to a subtle
+// dash when the candidate hasn't been scored yet (e.g. no job assigned or JD missing).
+export const FitBadge = ({ score, summary }) => {
+  if (score === null || score === undefined) {
+    return (
+      <span
+        className="inline-flex items-center justify-center h-6 min-w-[2.25rem] rounded-full text-xs text-muted-foreground/60"
+        title="Not scored yet — assign a job with a JD to compute a fit score"
+        data-testid="fit-score-empty"
+      >
+        —
+      </span>
+    );
+  }
+  const n = Math.max(0, Math.min(100, Number(score)));
+  let cls;
+  if (n >= 80) cls = 'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200';
+  else if (n >= 60) cls = 'bg-amber-100 text-amber-800 ring-1 ring-amber-200';
+  else cls = 'bg-rose-100 text-rose-800 ring-1 ring-rose-200';
+  return (
+    <span
+      className={`inline-flex items-center justify-center h-6 min-w-[2.25rem] px-2 rounded-full text-xs font-semibold ${cls}`}
+      title={summary || `AI fit score: ${n}/100`}
+      data-testid={`fit-score-${n}`}
+    >
+      {n}
+    </span>
+  );
+};
+
 export default function CandidatesPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -68,6 +99,7 @@ export default function CandidatesPage() {
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [sortBy, setSortBy] = useState('created_at'); // 'created_at' | 'fit_score' | 'name'
   const [bulkDialog, setBulkDialog] = useState(null); // {action}
   const [bulkValue, setBulkValue] = useState('');
   const [bulkReason, setBulkReason] = useState('');
@@ -92,7 +124,8 @@ export default function CandidatesPage() {
 
   const load = useCallback(() => {
     setLoading(true);
-    const params = { page, limit };
+    const order = sortBy === 'name' ? 1 : -1;
+    const params = { page, limit, sort: sortBy, order };
     if (q) params.q = q;
     Object.entries(filters).forEach(([k, v]) => {
       if (v !== 'all') params[k] = v;
@@ -102,7 +135,7 @@ export default function CandidatesPage() {
       .then((r) => setData(r.data))
       .catch((e) => toast.error(errMsg(e)))
       .finally(() => setLoading(false));
-  }, [q, filters, page, limit]);
+  }, [q, filters, page, limit, sortBy]);
 
   useEffect(() => {
     const t = setTimeout(load, q ? 300 : 0);
@@ -305,6 +338,14 @@ export default function CandidatesPage() {
             {tags.map((t) => <SelectItem key={t.id} value={t.name}>{t.name}</SelectItem>)}
           </SelectContent>
         </Select>
+        <Select value={sortBy} onValueChange={(v) => { setSortBy(v); setPage(1); }}>
+          <SelectTrigger className="w-[150px] h-9" data-testid="candidates-sort-select"><SelectValue placeholder="Sort" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="created_at">Newest first</SelectItem>
+            <SelectItem value="fit_score">Best fit first</SelectItem>
+            <SelectItem value="name">Name (A-Z)</SelectItem>
+          </SelectContent>
+        </Select>
         {activeFilterChips.length > 0 && (
           <Button variant="ghost" size="sm" className="h-9" onClick={() => { setFilters({ job_id: 'all', stage: 'all', source: 'all', recruiter_id: 'all', tag: 'all' }); setQ(''); setPage(1); }}>
             <X className="h-4 w-4 mr-1" /> Clear
@@ -349,6 +390,7 @@ export default function CandidatesPage() {
                 <TableHead>Candidate</TableHead>
                 <TableHead className="hidden sm:table-cell">ID</TableHead>
                 <TableHead>Role</TableHead>
+                <TableHead className="w-[70px]" title="AI fit score vs the candidate's assigned job">Fit</TableHead>
                 <TableHead>Stage</TableHead>
                 <TableHead className="hidden md:table-cell">Source</TableHead>
                 <TableHead className="hidden md:table-cell">Recruiter</TableHead>
@@ -359,10 +401,10 @@ export default function CandidatesPage() {
             </TableHeader>
             <TableBody>
               {loading && (
-                <TableRow><TableCell colSpan={10} className="text-center py-10 text-muted-foreground">Loading candidates...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={11} className="text-center py-10 text-muted-foreground">Loading candidates...</TableCell></TableRow>
               )}
               {!loading && data.items.length === 0 && (
-                <TableRow><TableCell colSpan={10} className="text-center py-10 text-muted-foreground">No candidates found. Try adjusting filters.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={11} className="text-center py-10 text-muted-foreground">No candidates found. Try adjusting filters.</TableCell></TableRow>
               )}
               {!loading && data.items.map((c) => (
                 <TableRow key={c.id} className="cursor-pointer" data-testid={`candidate-row-${c.id}`} onClick={() => navigate(`/candidates/${c.id}`)}>
@@ -385,6 +427,9 @@ export default function CandidatesPage() {
                   </TableCell>
                   <TableCell className="hidden sm:table-cell text-xs font-mono text-muted-foreground" data-testid={`candidate-code-${c.id}`}>{c.candidate_code || '—'}</TableCell>
                   <TableCell className="text-sm">{c.job_title || '—'}</TableCell>
+                  <TableCell data-testid={`candidate-fit-cell-${c.id}`}>
+                    <FitBadge score={c.fit_score} summary={c.fit_score_summary} />
+                  </TableCell>
                   <TableCell><StageBadge stage={c.stage} /></TableCell>
                   <TableCell className="hidden md:table-cell text-sm capitalize">{(c.source || '').replace('_', ' ')}</TableCell>
                   <TableCell className="hidden md:table-cell text-sm">{c.recruiter_name || '—'}</TableCell>

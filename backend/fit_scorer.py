@@ -70,14 +70,17 @@ async def recompute_candidate_fit(candidate_id: str):
     if not cand or not cand.get('job_id'):
         return
     job = await db.jobs.find_one({'id': cand['job_id']})
-    if not job or not job.get('jd_text'):
+    # Prefer explicit jd_text (uploaded/pasted JD); fall back to the shorter job description
+    # so recruiters see fit scores even before they've attached a formal JD document.
+    jd_source = (job or {}).get('jd_text') or (job or {}).get('description') or ''
+    if not job or not jd_source.strip():
         await db.candidates.update_one({'id': candidate_id}, {'$set': {
             'fit_score': None, 'fit_score_summary': None, 'fit_score_computed_at': None,
         }})
         return
     resume_text = await _resume_text_for(cand)
     try:
-        result = await _score_text(resume_text, job['jd_text'], candidate_id[:8])
+        result = await _score_text(resume_text, jd_source, candidate_id[:8])
     except Exception:
         return
     await db.candidates.update_one({'id': candidate_id}, {'$set': {
