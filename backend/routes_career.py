@@ -29,11 +29,45 @@ DEFAULT_SETTINGS = {
     'headline': "We're hiring",
     'subheadline': 'Explore open roles and help us build something great.',
     'logo_file_id': None,
+    'hero_image_file_id': None,
     'hero_image_url': None,
     'primary_color': '#1a5c47',
+    'secondary_color': '#f4b942',
+    'heading_font_family': None,
+    'heading_font_url': None,
+    'body_font_family': None,
+    'body_font_url': None,
+    'meta_description': None,
+    'meta_keywords': None,
+    'og_image_file_id': None,
+    'jobposting_seo_enabled': True,
     'about_text': '',
     'benefits': [],
 }
+
+# Static content pages exposed under /careers/{key}. Kept as a fixed catalogue so
+# the admin UI knows what to show and the public router knows what routes exist.
+CONTENT_PAGE_KEYS = ['about', 'benefits', 'life', 'testimonials']
+CONTENT_PAGE_TITLES = {
+    'about': 'About Us',
+    'benefits': 'Benefits & Perks',
+    'life': 'Life at Company',
+    'testimonials': 'What Our Team Says',
+}
+
+
+def _default_page(key: str) -> dict:
+    return {
+        'key': key,
+        'hero_heading': CONTENT_PAGE_TITLES.get(key, key.title()),
+        'hero_subheading': '',
+        'hero_image_file_id': None,
+        'body_markdown': '',
+        'published': False,
+        'meta_description': None,
+        'created_at': now_iso(),
+        'updated_at': now_iso(),
+    }
 
 
 async def _get_settings() -> dict:
@@ -78,6 +112,14 @@ class SettingsUpdate(BaseModel):
     subheadline: Optional[str] = None
     hero_image_url: Optional[str] = None
     primary_color: Optional[str] = None
+    secondary_color: Optional[str] = None
+    heading_font_family: Optional[str] = None
+    heading_font_url: Optional[str] = None
+    body_font_family: Optional[str] = None
+    body_font_url: Optional[str] = None
+    meta_description: Optional[str] = None
+    meta_keywords: Optional[str] = None
+    jobposting_seo_enabled: Optional[bool] = None
     about_text: Optional[str] = None
     benefits: Optional[list[str]] = None
 
@@ -105,6 +147,168 @@ async def upload_logo(file: UploadFile = File(...), user: dict = Depends(require
     })
     await db.career_settings.update_one({'key': 'singleton'}, {'$set': {'logo_file_id': fid, 'updated_at': now_iso()}}, upsert=True)
     return {'logo_file_id': fid}
+
+
+async def _upload_branding_image(file: UploadFile, user: dict, field: str, max_mb: int = 8) -> str:
+    data = await file.read()
+    if len(data) > max_mb * 1024 * 1024:
+        raise HTTPException(status_code=422, detail=f'Image must be under {max_mb}MB')
+    if not (file.content_type or '').startswith('image/'):
+        raise HTTPException(status_code=422, detail='File must be an image')
+    fid = new_id()
+    await db.files.insert_one({
+        'id': fid, 'filename': file.filename, 'content_type': file.content_type or 'image/jpeg',
+        'size': len(data), 'data_b64': base64.b64encode(data).decode(), 'uploaded_by': user['id'], 'created_at': now_iso(),
+    })
+    await db.career_settings.update_one({'key': 'singleton'}, {'$set': {field: fid, 'updated_at': now_iso()}}, upsert=True)
+    return fid
+
+
+@router.post('/settings/hero')
+async def upload_hero(file: UploadFile = File(...), user: dict = Depends(require_roles('admin', 'recruiter'))):
+    fid = await _upload_branding_image(file, user, 'hero_image_file_id', max_mb=8)
+    return {'hero_image_file_id': fid}
+
+
+@router.post('/settings/og-image')
+async def upload_og_image(file: UploadFile = File(...), user: dict = Depends(require_roles('admin', 'recruiter'))):
+    fid = await _upload_branding_image(file, user, 'og_image_file_id', max_mb=5)
+    return {'og_image_file_id': fid}
+
+
+# ---------------- Static content pages (admin) ----------------
+
+class PageUpdate(BaseModel):
+    hero_heading: Optional[str] = None
+    hero_subheading: Optional[str] = None
+    body_markdown: Optional[str] = None
+    meta_description: Optional[str] = None
+    published: Optional[bool] = None
+
+
+@router.get('/pages')
+async def list_pages(user: dict = Depends(require_roles('admin', 'recruiter'))):
+    out = []
+    for key in CONTENT_PAGE_KEYS:
+        page = await db.career_pages.find_one({'key': key}, {'_id': 0})
+        if not page:
+            page = _default_page(key)
+            await db.career_pages.insert_one(dict(page))
+        page['title'] = CONTENT_PAGE_TITLES[key]
+        out.append(page)
+    return out
+
+
+@router.get('/pages/{key}')
+async def get_page(key: str, user: dict = Depends(require_roles('admin', 'recruiter'))):
+    if key not in CONTENT_PAGE_KEYS:
+        raise HTTPException(status_code=404, detail='Unknown page')
+    page = await db.career_pages.find_one({'key': key}, {'_id': 0})
+    if not page:
+        page = _default_page(key)
+        await db.career_pages.insert_one(dict(page))
+    page['title'] = CONTENT_PAGE_TITLES[key]
+    return page
+
+
+@router.put('/pages/{key}')
+async def update_page(key: str, body: PageUpdate, user: dict = Depends(require_roles('admin', 'recruiter'))):
+    if key not in CONTENT_PAGE_KEYS:
+        raise HTTPException(status_code=404, detail='Unknown page')
+    await db.career_pages.update_one({'key': key}, {'$setOnInsert': _default_page(key)}, upsert=True)
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    updates['updated_at'] = now_iso()
+    await db.career_pages.update_one({'key': key}, {'$set': updates})
+    page = await db.career_pages.find_one({'key': key}, {'_id': 0})
+    page['title'] = CONTENT_PAGE_TITLES[key]
+    return page
+
+
+@router.post('/pages/{key}/hero')
+async def upload_page_hero(key: str, file: UploadFile = File(...), user: dict = Depends(require_roles('admin', 'recruiter'))):
+    if key not in CONTENT_PAGE_KEYS:
+        raise HTTPException(status_code=404, detail='Unknown page')
+    data = await file.read()
+    if len(data) > 8 * 1024 * 1024:
+        raise HTTPException(status_code=422, detail='Image must be under 8MB')
+    if not (file.content_type or '').startswith('image/'):
+        raise HTTPException(status_code=422, detail='File must be an image')
+    fid = new_id()
+    await db.files.insert_one({
+        'id': fid, 'filename': file.filename, 'content_type': file.content_type or 'image/jpeg',
+        'size': len(data), 'data_b64': base64.b64encode(data).decode(), 'uploaded_by': user['id'], 'created_at': now_iso(),
+    })
+    await db.career_pages.update_one({'key': key}, {'$setOnInsert': _default_page(key)}, upsert=True)
+    await db.career_pages.update_one({'key': key}, {'$set': {'hero_image_file_id': fid, 'updated_at': now_iso()}})
+    return {'hero_image_file_id': fid}
+
+
+# ---------------- Media Library (admin) ----------------
+
+class MediaTagsUpdate(BaseModel):
+    tags: list[str]
+
+
+@router.get('/media')
+async def list_media(q: Optional[str] = None, tag: Optional[str] = None,
+                     user: dict = Depends(require_roles('admin', 'recruiter'))):
+    query: dict = {}
+    if tag and tag != 'all':
+        query['tags'] = tag
+    if q:
+        query['filename'] = {'$regex': re.escape(q), '$options': 'i'}
+    items = await db.media_library.find(query, {'_id': 0, 'data_b64': 0}).sort('created_at', -1).to_list(500)
+    return items
+
+
+@router.post('/media')
+async def upload_media(files: list[UploadFile] = File(...), tags: Optional[str] = Form(None),
+                      user: dict = Depends(require_roles('admin', 'recruiter'))):
+    if len(files) > 20:
+        raise HTTPException(status_code=422, detail='Maximum 20 files per upload')
+    tag_list = [t.strip() for t in (tags or '').split(',') if t.strip()]
+    created = []
+    for f in files:
+        data = await f.read()
+        if not (f.content_type or '').startswith('image/'):
+            continue  # silently skip non-images in bulk
+        if len(data) > 10 * 1024 * 1024:
+            continue
+        item = {
+            'id': new_id(), 'filename': f.filename, 'content_type': f.content_type or 'image/jpeg',
+            'size': len(data), 'data_b64': base64.b64encode(data).decode(),
+            'tags': tag_list, 'uploaded_by': user['id'], 'created_at': now_iso(),
+        }
+        await db.media_library.insert_one(item)
+        item.pop('data_b64', None)
+        created.append(item)
+    return {'created': created, 'skipped': len(files) - len(created)}
+
+
+@router.put('/media/{media_id}/tags')
+async def update_media_tags(media_id: str, body: MediaTagsUpdate,
+                            user: dict = Depends(require_roles('admin', 'recruiter'))):
+    result = await db.media_library.update_one({'id': media_id}, {'$set': {'tags': body.tags}})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail='Media not found')
+    item = await db.media_library.find_one({'id': media_id}, {'_id': 0, 'data_b64': 0})
+    return item
+
+
+@router.delete('/media/{media_id}')
+async def delete_media(media_id: str, user: dict = Depends(require_roles('admin', 'recruiter'))):
+    result = await db.media_library.delete_one({'id': media_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail='Media not found')
+    return {'ok': True}
+
+
+@router.get('/media/{media_id}/raw')
+async def media_raw(media_id: str, user: dict = Depends(require_roles('admin', 'recruiter'))):
+    doc = await db.media_library.find_one({'id': media_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail='Media not found')
+    return Response(content=base64.b64decode(doc['data_b64']), media_type=doc.get('content_type', 'image/jpeg'))
 
 
 @router.get('/dashboard')
@@ -148,6 +352,181 @@ async def public_logo():
     if not doc:
         raise HTTPException(status_code=404, detail='No logo set')
     return Response(content=base64.b64decode(doc['data_b64']), media_type=doc.get('content_type', 'image/png'))
+
+
+@router.get('/public/hero')
+async def public_hero():
+    s = await _get_settings()
+    if not s.get('hero_image_file_id'):
+        raise HTTPException(status_code=404, detail='No hero image set')
+    doc = await db.files.find_one({'id': s['hero_image_file_id']})
+    if not doc:
+        raise HTTPException(status_code=404, detail='No hero image set')
+    return Response(content=base64.b64decode(doc['data_b64']), media_type=doc.get('content_type', 'image/jpeg'))
+
+
+@router.get('/public/og-image')
+async def public_og_image():
+    s = await _get_settings()
+    fid = s.get('og_image_file_id') or s.get('hero_image_file_id') or s.get('logo_file_id')
+    if not fid:
+        raise HTTPException(status_code=404, detail='No OG image set')
+    doc = await db.files.find_one({'id': fid})
+    if not doc:
+        raise HTTPException(status_code=404, detail='No OG image set')
+    return Response(content=base64.b64decode(doc['data_b64']), media_type=doc.get('content_type', 'image/jpeg'))
+
+
+@router.get('/public/pages')
+async def public_pages_list():
+    s = await _get_settings()
+    if not s.get('portal_enabled'):
+        raise HTTPException(status_code=404, detail='Career portal is not available')
+    pages = await db.career_pages.find({'published': True}, {'_id': 0, 'body_markdown': 0}).to_list(20)
+    for p in pages:
+        p['title'] = CONTENT_PAGE_TITLES.get(p.get('key'), p.get('key', '').title())
+    return pages
+
+
+@router.get('/public/pages/{key}')
+async def public_page(key: str):
+    s = await _get_settings()
+    if not s.get('portal_enabled'):
+        raise HTTPException(status_code=404, detail='Career portal is not available')
+    if key not in CONTENT_PAGE_KEYS:
+        raise HTTPException(status_code=404, detail='Page not found')
+    page = await db.career_pages.find_one({'key': key, 'published': True}, {'_id': 0})
+    if not page:
+        raise HTTPException(status_code=404, detail='This page has not been published yet')
+    page['title'] = CONTENT_PAGE_TITLES[key]
+    return page
+
+
+@router.get('/public/pages/{key}/hero')
+async def public_page_hero(key: str):
+    if key not in CONTENT_PAGE_KEYS:
+        raise HTTPException(status_code=404, detail='Unknown page')
+    page = await db.career_pages.find_one({'key': key})
+    if not page or not page.get('hero_image_file_id'):
+        raise HTTPException(status_code=404, detail='No hero image')
+    doc = await db.files.find_one({'id': page['hero_image_file_id']})
+    if not doc:
+        raise HTTPException(status_code=404, detail='No hero image')
+    return Response(content=base64.b64decode(doc['data_b64']), media_type=doc.get('content_type', 'image/jpeg'))
+
+
+@router.get('/public/media/{media_id}')
+async def public_media(media_id: str):
+    doc = await db.media_library.find_one({'id': media_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail='Media not found')
+    return Response(content=base64.b64decode(doc['data_b64']), media_type=doc.get('content_type', 'image/jpeg'))
+
+
+# ---------------- SEO endpoints (public) ----------------
+
+@router.get('/seo/robots.txt')
+async def robots_txt():
+    s = await _get_settings()
+    lines = ['User-agent: *']
+    if s.get('portal_enabled'):
+        lines.append('Allow: /careers')
+        lines.append('Disallow: /login')
+        lines.append('Disallow: /candidates')
+        lines.append('Disallow: /jobs')
+        lines.append('Disallow: /interviews')
+        lines.append('Disallow: /admin')
+        lines.append('Disallow: /career-portal')
+        lines.append(f'Sitemap: {APP_BASE_URL}/api/career/seo/sitemap.xml')
+    else:
+        lines.append('Disallow: /')
+    return Response(content='\n'.join(lines) + '\n', media_type='text/plain')
+
+
+@router.get('/seo/sitemap.xml')
+async def sitemap_xml():
+    s = await _get_settings()
+    urls: list[dict] = []
+    if s.get('portal_enabled'):
+        urls.append({'loc': f'{APP_BASE_URL}/careers', 'priority': '1.0', 'changefreq': 'daily'})
+        urls.append({'loc': f'{APP_BASE_URL}/careers/jobs', 'priority': '0.9', 'changefreq': 'daily'})
+        pages = await db.career_pages.find({'published': True}, {'_id': 0, 'key': 1, 'updated_at': 1}).to_list(20)
+        for p in pages:
+            urls.append({'loc': f'{APP_BASE_URL}/careers/{p["key"]}', 'priority': '0.6',
+                         'changefreq': 'weekly', 'lastmod': (p.get('updated_at') or '')[:10]})
+        jobs = await db.jobs.find({'published': True, 'status': 'open'},
+                                  {'_id': 0, 'slug': 1, 'updated_at': 1, 'created_at': 1}).to_list(500)
+        for j in jobs:
+            if not j.get('slug'):
+                continue
+            urls.append({'loc': f'{APP_BASE_URL}/careers/jobs/{j["slug"]}', 'priority': '0.8',
+                         'changefreq': 'weekly', 'lastmod': (j.get('updated_at') or j.get('created_at') or '')[:10]})
+    body = ['<?xml version="1.0" encoding="UTF-8"?>',
+            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
+    for u in urls:
+        body.append('  <url>')
+        body.append(f'    <loc>{u["loc"]}</loc>')
+        if u.get('lastmod'):
+            body.append(f'    <lastmod>{u["lastmod"]}</lastmod>')
+        body.append(f'    <changefreq>{u.get("changefreq", "weekly")}</changefreq>')
+        body.append(f'    <priority>{u.get("priority", "0.5")}</priority>')
+        body.append('  </url>')
+    body.append('</urlset>')
+    return Response(content='\n'.join(body), media_type='application/xml')
+
+
+@router.get('/public/jobs/{slug}/jobposting.json')
+async def jobposting_jsonld(slug: str):
+    """Google JobPosting structured data for a single open role (SEO)."""
+    s = await _get_settings()
+    if not s.get('portal_enabled') or not s.get('jobposting_seo_enabled', True):
+        raise HTTPException(status_code=404, detail='Not available')
+    job = await db.jobs.find_one({'slug': slug, 'published': True, 'status': 'open'}, {'_id': 0})
+    if not job:
+        raise HTTPException(status_code=404, detail='Job not found')
+    desc = (job.get('jd_text') or job.get('description') or '').strip()
+    if not desc:
+        desc = f'{job["title"]} at {s.get("company_name")}'
+    location_str = job.get('location') or ''
+    remote_type = (job.get('remote_type') or '').lower()
+    posted = (job.get('created_at') or now_iso())[:10]
+    payload: dict = {
+        '@context': 'https://schema.org',
+        '@type': 'JobPosting',
+        'title': job['title'],
+        'description': desc,
+        'datePosted': posted,
+        'employmentType': (job.get('employment_type') or 'FULL_TIME').upper().replace('-', '_'),
+        'hiringOrganization': {
+            '@type': 'Organization',
+            'name': s.get('company_name'),
+            'sameAs': APP_BASE_URL,
+        },
+        'directApply': True,
+        'url': f'{APP_BASE_URL}/careers/jobs/{slug}',
+    }
+    if location_str:
+        payload['jobLocation'] = {
+            '@type': 'Place',
+            'address': {'@type': 'PostalAddress', 'addressLocality': location_str},
+        }
+    if remote_type in ('remote', 'fully_remote'):
+        payload['jobLocationType'] = 'TELECOMMUTE'
+        payload.setdefault('applicantLocationRequirements', {
+            '@type': 'Country', 'name': 'Worldwide',
+        })
+    if job.get('salary_min') or job.get('salary_max'):
+        payload['baseSalary'] = {
+            '@type': 'MonetaryAmount',
+            'currency': job.get('salary_currency', 'USD'),
+            'value': {
+                '@type': 'QuantitativeValue',
+                'minValue': job.get('salary_min'),
+                'maxValue': job.get('salary_max'),
+                'unitText': (job.get('salary_period') or 'YEAR').upper(),
+            },
+        }
+    return payload
 
 
 @router.get('/public/settings')

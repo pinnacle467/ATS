@@ -4,7 +4,9 @@ import {
   Bell,
   Briefcase,
   CalendarDays,
+  FileText,
   Globe,
+  Image as ImageIcon,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -39,6 +41,8 @@ const NAV = [
 const CAREER_NAV = [
   { to: '/career-portal', label: 'Dashboard', icon: Globe, testid: 'sidebar-nav-career-dashboard' },
   { to: '/career-portal/jobs', label: 'Jobs', icon: Briefcase, testid: 'sidebar-nav-career-jobs' },
+  { to: '/career-portal/content', label: 'Content', icon: FileText, testid: 'sidebar-nav-career-content' },
+  { to: '/career-portal/media', label: 'Media Library', icon: ImageIcon, testid: 'sidebar-nav-career-media' },
   { to: '/career-portal/settings', label: 'Settings', icon: Settings, testid: 'sidebar-nav-career-settings' },
 ];
 

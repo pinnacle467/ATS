@@ -9,23 +9,32 @@ import { api } from '@/lib/api';
 export default function CareerHomePage() {
   const settings = useCareerSettings();
   const [jobs, setJobs] = useState([]);
+  const backendUrl = process.env.REACT_APP_BACKEND_URL;
 
   useEffect(() => {
     api.get('/career/public/jobs').then((r) => setJobs((r.data || []).slice(0, 6))).catch(() => {});
   }, []);
 
+  const heroImageUrl = settings.hero_image_file_id
+    ? `${backendUrl}/api/career/public/hero`
+    : null;
+  const heroStyle = heroImageUrl
+    ? { backgroundImage: `linear-gradient(135deg, ${settings.primary_color}CC, ${(settings.secondary_color || settings.primary_color)}80), url(${heroImageUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+    : { background: `linear-gradient(180deg, ${settings.primary_color}12, transparent)` };
+  const heroTextClass = heroImageUrl ? 'text-white' : '';
+
   return (
     <div data-testid="career-home-page">
       {/* Hero */}
-      <section className="px-4 sm:px-6 py-20 sm:py-28 text-center" style={{ background: `linear-gradient(180deg, ${settings.primary_color}12, transparent)` }}>
+      <section className={`px-4 sm:px-6 py-20 sm:py-28 text-center ${heroTextClass}`} style={heroStyle} data-testid="career-hero-section">
         <div className="max-w-3xl mx-auto">
           <h1 className="font-display text-4xl sm:text-5xl font-semibold tracking-tight" data-testid="career-hero-headline">
             {settings.headline}
           </h1>
-          <p className="text-muted-foreground text-lg mt-4" data-testid="career-hero-subheadline">{settings.subheadline}</p>
+          <p className={`${heroImageUrl ? 'text-white/90' : 'text-muted-foreground'} text-lg mt-4`} data-testid="career-hero-subheadline">{settings.subheadline}</p>
           <div className="mt-8">
             <Link to="/careers/jobs">
-              <Button size="lg" data-testid="career-hero-cta" style={{ background: settings.primary_color }}>
+              <Button size="lg" data-testid="career-hero-cta" style={{ background: settings.secondary_color || settings.primary_color, color: '#ffffff' }}>
                 View Open Roles <ArrowRight className="h-4 w-4 ml-2" />
               </Button>
             </Link>

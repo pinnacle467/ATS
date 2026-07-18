@@ -9,6 +9,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { api, errMsg } from '@/lib/api';
+import { useCareerSettings } from './CareerPublicLayout';
+import { setMeta } from './CareerStaticPage';
 
 const EMPTY_FORM = {
   first_name: '', last_name: '', email: '', phone: '', location: '', linkedin_url: '', portfolio_url: '',
@@ -19,6 +21,7 @@ const EMPTY_FORM = {
 export default function CareerJobDetailPage() {
   const { slug } = useParams();
   const navigate = useNavigate();
+  const settings = useCareerSettings();
   const [job, setJob] = useState(null);
   const [notFound, setNotFound] = useState(false);
   const [applyOpen, setApplyOpen] = useState(false);
@@ -26,10 +29,48 @@ export default function CareerJobDetailPage() {
   const [resumeFile, setResumeFile] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const backendUrl = process.env.REACT_APP_BACKEND_URL;
 
   useEffect(() => {
     api.get(`/career/public/jobs/${slug}`).then((r) => setJob(r.data)).catch(() => setNotFound(true));
   }, [slug]);
+
+  // SEO: page title, meta description, OG tags, and Google JobPosting JSON-LD
+  useEffect(() => {
+    if (!job || !settings) return;
+    const title = `${job.title} — ${settings.company_name}`;
+    document.title = title;
+    const desc = (job.description || job.jd_text || '').slice(0, 200) || settings.meta_description || '';
+    setMeta('description', desc);
+    setMeta('og:title', title, true);
+    setMeta('og:description', desc, true);
+    setMeta('og:type', 'website', true);
+    setMeta('og:url', window.location.href, true);
+    setMeta('og:image', `${backendUrl}/api/career/public/og-image`, true);
+    setMeta('twitter:card', 'summary_large_image');
+    setMeta('twitter:title', title);
+    setMeta('twitter:description', desc);
+
+    // Inject Google JobPosting JSON-LD only if enabled site-wide.
+    if (settings.jobposting_seo_enabled === false) return;
+    const existing = document.getElementById('jobposting-jsonld');
+    if (existing) existing.remove();
+    fetch(`${backendUrl}/api/career/public/jobs/${slug}/jobposting.json`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data) return;
+        const script = document.createElement('script');
+        script.type = 'application/ld+json';
+        script.id = 'jobposting-jsonld';
+        script.textContent = JSON.stringify(data);
+        document.head.appendChild(script);
+      })
+      .catch(() => { /* SEO enhancement — silent fail */ });
+    return () => {
+      const s = document.getElementById('jobposting-jsonld');
+      if (s) s.remove();
+    };
+  }, [job, settings, slug, backendUrl]);
 
   const shareUrl = window.location.href;
 

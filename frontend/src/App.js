@@ -16,10 +16,13 @@ import AdminPage from '@/pages/AdminPage';
 import CareerDashboardPage from '@/pages/career/CareerDashboardPage';
 import CareerJobsPage from '@/pages/career/CareerJobsPage';
 import CareerSettingsPage from '@/pages/career/CareerSettingsPage';
+import CareerContentPage from '@/pages/career/CareerContentPage';
+import CareerMediaPage from '@/pages/career/CareerMediaPage';
 import CareerPublicLayout from '@/pages/public/CareerPublicLayout';
 import CareerHomePage from '@/pages/public/CareerHomePage';
 import CareerJobsListPage from '@/pages/public/CareerJobsListPage';
 import CareerJobDetailPage from '@/pages/public/CareerJobDetailPage';
+import CareerStaticPage from '@/pages/public/CareerStaticPage';
 
 const Protected = ({ children, roles }) => {
   const { user, loading } = useAuth();
@@ -52,9 +55,12 @@ function App() {
           <Route path="/career-portal" element={<Protected roles={['admin', 'recruiter']}><CareerDashboardPage /></Protected>} />
           <Route path="/career-portal/jobs" element={<Protected roles={['admin', 'recruiter']}><CareerJobsPage /></Protected>} />
           <Route path="/career-portal/settings" element={<Protected roles={['admin', 'recruiter']}><CareerSettingsPage /></Protected>} />
+          <Route path="/career-portal/content" element={<Protected roles={['admin', 'recruiter']}><CareerContentPage /></Protected>} />
+          <Route path="/career-portal/media" element={<Protected roles={['admin', 'recruiter']}><CareerMediaPage /></Protected>} />
           <Route path="/careers" element={<CareerPublicLayout><CareerHomePage /></CareerPublicLayout>} />
           <Route path="/careers/jobs" element={<CareerPublicLayout><CareerJobsListPage /></CareerPublicLayout>} />
           <Route path="/careers/jobs/:slug" element={<CareerPublicLayout><CareerJobDetailPage /></CareerPublicLayout>} />
+          <Route path="/careers/:key" element={<CareerPublicLayout><CareerStaticPage /></CareerPublicLayout>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
