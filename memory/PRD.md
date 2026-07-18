@@ -2,16 +2,52 @@
 
 ## Product
 Lightweight Greenhouse-style ATS for internal use. React + FastAPI + MongoDB, Tailwind + shadcn/ui.
-Preview: https://ats-import-build.preview.emergentagent.com
 
 ## Core proven in POC
 AI resume parsing (PDF/DOCX → OpenAI gpt-5.4-mini via Emergent LLM key → structured JSON + confidence flags).
 POC script: /app/tests/poc_resume_parse.py (all tests passed).
 
+---
+
+## 🚨 NON-NEGOTIABLE DATA DURABILITY — READ FIRST WHEN IMPORTING TO A NEW CHAT
+
+The user's real data (candidates, resumes, jobs, JDs, fit scores, notes, activities, audit log, users) MUST survive every chat import. If any of the steps below are skipped, the new chat will boot with only the synthetic demo seed and every real record will be lost.
+
+### How the durability chain works
+1. Every 5 minutes, the running backend calls `python /app/scripts/dump_snapshot.py`, which writes the full live MongoDB `sprout_ats` database to `/app/backend/data_seed/snapshot.json` atomically. The loop is registered in `backend/server.py`'s startup handler (`snapshot_scheduler.snapshot_loop`).
+2. When the user commits + pushes via Emergent's **Save to GitHub** feature, `snapshot.json` goes into the repo (it is NOT in `.gitignore`).
+3. On the next chat import, the fresh chat pulls the repo (including the latest snapshot). MongoDB starts empty. Backend startup calls `seed.seed_if_empty()` which sees the empty `users` collection and calls `_restore_snapshot()`, which reads `backend/data_seed/snapshot.json` and re-inserts every collection.
+
+### Non-negotiable steps for any main agent working on this build in a new chat
+
+The following MUST be done, in order, at the very start of every new chat import — before touching any feature:
+
+- **Step 1 — Recreate `.env` files** (they are gitignored). Values are protected but standard:
+  - `/app/backend/.env` must contain: `MONGO_URL="mongodb://localhost:27017"`, `DB_NAME="sprout_ats"`, `CORS_ORIGINS="*"`, `JWT_SECRET=<any strong value>`, `EMERGENT_LLM_KEY=<universal key from emergent_integrations_manager>`, `APP_BASE_URL=<current preview URL>`, `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` (currently `45396856275-...apps.googleusercontent.com` / `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` — ask user to reconfirm).
+  - `/app/frontend/.env` must contain: `REACT_APP_BACKEND_URL=<current preview URL>`, `WDS_SOCKET_PORT=443`.
+- **Step 2 — Install deps**: `pip install -r /app/backend/requirements.txt --extra-index-url https://d33sy5i8bnduwe.cloudfront.net/simple/` and `cd /app/frontend && yarn install`.
+- **Step 3 — DO NOT run `mongorestore` or delete/overwrite the `sprout_ats` database.** The backend's startup will auto-restore from `/app/backend/data_seed/snapshot.json` via `seed.seed_if_empty()`. If MongoDB already has data from a prior boot in this chat, seed does nothing and the data stays.
+- **Step 4 — Restart supervisor**: `sudo supervisorctl restart backend frontend`. Confirm the log contains `snapshot_loop scheduled — data_seed/snapshot.json will be refreshed every 5 minutes`.
+- **Step 5 — Verify data restored**: `mongosh sprout_ats --quiet --eval 'print(db.candidates.countDocuments({}))'` — expect ≥ 136 (as of July 2026). Also verify at least one candidate has a `fit_score` and one job has `jd_text`.
+- **Step 6 — Verify auto-snapshot is alive**: after ~6 minutes of runtime, `stat -c '%Y' /app/backend/data_seed/snapshot.json` should show a fresh mtime. If not, check `/var/log/supervisor/backend.err.log` for `snapshot_dump failed` lines.
+
+### Non-negotiable steps for the USER before starting a new chat
+- **Click "Save to GitHub" in the Emergent chat input BEFORE starting the new chat.** This pushes the latest `snapshot.json` to the repo. Without this push, the new chat pulls a stale snapshot and any data added since the last push is lost.
+- If they haven't clicked Save to GitHub in a while, the main agent should remind them proactively (`snapshot.json` mtime older than an hour is a good trigger).
+
+### Things that MUST NOT be done — silent data loss risks
+- ❌ Never add `snapshot.json` to `.gitignore`.
+- ❌ Never delete `/app/backend/data_seed/snapshot.json`.
+- ❌ Never disable / comment out the `snapshot_loop` task in `server.py`.
+- ❌ Never call `db.dropDatabase()` on `sprout_ats` without first taking a fresh snapshot.
+- ❌ Never run `import_from_remote.py` on an already-populated db — it does a `delete_many({})` on every collection first (design assumption: it's a one-off migration from a remote build, not a refresh).
+
+---
+
 ## Modules (V1 — built)
 1. **Dashboard**: KPI cards (open roles, active candidates, interviews this week, offers, avg time-to-hire), pipeline bar chart, My Tasks, activity feed, filters (job/department/recruiter).
-2. **Candidate Tracker**: AI resume parse (single + bulk up to 10) → editable review form with low-confidence flags → save candidate. Table + kanban (dnd-kit drag-drop) views, search/filters/sort, bulk actions (move stage/reject/tag/assign), candidate profile (resume preview/download, notes + email log, timeline, scorecards), CSV export.
-3. **Interviews**: week calendar + list views, schedule dialog (type, multiple interviewers, date/time/duration, location/video), manual availability slots + availability/conflict check, status flow scheduled→feedback_pending→feedback_submitted, scorecards (per-stage attributes from pipeline settings), interview kits, in-app notifications.
+2. **Candidate Tracker**: AI resume parse (single + bulk + **folder drop up to 100 files, chunked in batches of 10**) → editable review form with low-confidence flags → save candidate (single) or **Save All** (bulk-assign remaining drafts to one job). Table + kanban (dnd-kit drag-drop) views, search/filters/**sort (Newest / Best fit / Name)**, **Fit column** with color-coded 0-100 AI score, bulk actions (move stage/reject/tag/assign/delete), candidate profile (resume preview/download, notes + email log, timeline, scorecards), CSV export.
+3. **Interviews**: week calendar + list views, schedule dialog (type, multiple interviewers, date/time/duration, location/video), manual availability slots + availability/conflict check, status flow scheduled→feedback_pending→feedback_submitted, scorecards (per-stage attributes from pipeline settings), interview kits, in-app notifications. **Google Calendar connect button** (`/oauth/google/login` → callback) — creates events with Meet links + free-busy check.
 4. **Admin Panel**: user management (invite/role/deactivate/delete, last login), global pipeline stage editor (order + scorecard attrs), departments & tags, interview kits CRUD, audit log with filter.
 
 ## RBAC
@@ -20,19 +56,31 @@ POC script: /app/tests/poc_resume_parse.py (all tests passed).
 - interviewer: only assigned candidates/interviews, submit scorecards, no add/edit candidates
 
 ## Architecture notes
-- Backend: /app/backend, modular routers (routes_*.py), JWT auth (auth.py), resume_parser.py, seed.py (auto-seeds when users collection empty).
-- Files stored as base64 in Mongo `files` collection; served via /api/files/{id} (auth required; frontend fetches blob for iframe preview).
+- Backend: /app/backend, modular routers (routes_*.py), JWT auth (auth.py), resume_parser.py, fit_scorer.py, seed.py (auto-seeds when users collection empty, restores from `data_seed/snapshot.json`), **snapshot_scheduler.py** (writes snapshot every 5 min).
+- Files stored as base64 in Mongo `files` collection; served via /api/files/{id} (auth required; frontend fetches blob for iframe preview). Resume auto-compression (lossless PDF font-subset + DOCX max-zip + Pillow image downsample) in `resume_compressor.py`.
+- Fit scoring: `fit_scorer.recompute_candidate_fit()` is called as a background task on candidate create + on job_id change + on JD upload. Falls back to `job.description` when `jd_text` is missing.
 - All dates stored as ISO strings. IDs are uuid4 strings.
-- Calendar sync (Google Workspace / Microsoft Graph) DEFERRED — planned Phase 4 when user provides OAuth credentials. Availability is manual slots (availability collection, seeded Mon-Fri 9-17 for interviewers).
+- **Data durability**: see the NON-NEGOTIABLE section above. `data_seed/snapshot.json` is the single source of truth for real data across chat imports.
 
-## Env
-- EMERGENT_LLM_KEY and JWT_SECRET in /app/backend/.env
+## Env (in /app/backend/.env)
+- `MONGO_URL`, `DB_NAME=sprout_ats`, `JWT_SECRET`, `EMERGENT_LLM_KEY`, `APP_BASE_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `CORS_ORIGINS`
 
-## Changelog (this session — Feb 2026)
-- **DOCX compression enhanced**: `resume_compressor.py` now also downsamples/re-encodes embedded images (word/media/*) inside DOCX files via Pillow (max 1600px dim, JPEG q=85 or optimized PNG), on top of the pre-existing max-level zip re-compression. Falls back safely to original bytes on any error. Verified byte-safe (zip integrity + identical extracted text) via direct script test and via live UI screenshot (embedded photo in a real resume still renders correctly post-compression).
-- **Rejection sub-reason ("Not Fit") verified working end-to-end**: confirmed via direct API test (`move-stage` with reason `"Not Fit: <detail>"` persists correctly to `rejection_reason`/`status`/`stage`) and code review of all 3 entry points (CandidateProfilePage reject dialog, CandidatesPage bulk-reject dialog, Kanban drag-to-Rejected dialog) — all correctly gate "Not Fit" behind a required text detail field.
-- **Resume attachment indicators verified working**: visually confirmed on Candidates table (colored vs dimmed file icon per row) via screenshot.
-- **Resume preview enlarged + made expandable** (`CandidateProfilePage.jsx`): default preview height increased from 480px to 720px; added an "Expand" button (`data-testid=candidate-resume-expand-button`) that opens a large full-screen modal (`data-testid=candidate-resume-expand-modal`, ~95vw x 92vh) rendering the same PDF iframe / DOCX preview at full readable size. Fixed a docx-preview rendering race (blank/gray result) by adding a 200ms delay before calling `renderAsync` in the modal so the Dialog's open-transition finishes and the container has real width before docx-preview measures it. Verified visually: DOCX renders crisp, large, fully readable (including embedded photo); PDF iframe blob URL wiring confirmed correct (blank rendering when screenshotted is a known headless-Chromium limitation — no native PDF viewer plugin in Playwright's Chromium build — not an app bug; renders fine in real user browsers, consistent with the pre-existing default PDF preview behavior).
+## Current live data (July 2026, after import from `ats-repo-sync.preview.emergentagent.com`)
+- 3 users (admin@ats.com/Admin@123, kangabhijeet@gmail.com, abhi.kang@context66.com/Imported@123)
+- 6 jobs (1 with a 7,059-char JD — Sales Director US)
+- 136 candidates, of which:
+  - 12 have resume files attached
+  - 35 have AI fit scores (top: Raghavender Katakam 91, Hariharan Rajendran 87, Ashish Bhadauria 82, Astrid Martin 80)
+- 14 interviews, 126 notes, 73 activities, 184 audit-log entries, 2 scorecards
+- 12 resume files (auto-compressed, base64 in `files` collection)
+
+## Changelog (July 2026 session)
+- **AI Parsing turned ON**: `EMERGENT_LLM_KEY` (universal) wired; verified via `parse_resume_text` smoke test.
+- **Google Calendar OAuth wired**: real client id + secret in `.env`; `/api/oauth/google/login` returns valid auth URL with the correct redirect.
+- **Login page brand refresh**: new warm hero image (`pexels.com/photos/9301835`), floating "AI resume parsing" / "Structured interview scorecards" chips, split tagline, trust element with brand-emerald avatars.
+- **Bulk Resume Import — folder drop + chunked**: `AddCandidatePage.jsx` now supports `webkitGetAsEntry` folder drops and a dedicated **Upload Folder** button; up to 100 files per session, chunked into batches of 10 (matches backend cap of 25/request). Progress bar shows `Parsing X of Y`. A **Save All** action bar bulk-creates all clean drafts against a single chosen job in one click (skips drafts flagged with a "same person" match banner so recruiter reviews those individually).
+- **Fit Score Column** on Candidates table: new `FitBadge` component with color tiers (emerald ≥80, amber 60–79, rose <60), tooltip shows the AI's `fit_score_summary`, sort dropdown adds "Best fit first" and "Name (A-Z)". Fit scorer now falls back to `job.description` when `jd_text` is absent (unblocks scoring for the 5 imported jobs that only have a description).
+- **Data-durability chain**: imported all data from `https://ats-repo-sync.preview.emergentagent.com` via `scripts/import_from_remote.py`; wrote `scripts/dump_snapshot.py` (atomic write to `data_seed/snapshot.json` covering every collection); added `backend/snapshot_scheduler.py` running as an asyncio task from `server.py` startup that dumps every 5 minutes so all future edits also persist across chat imports. **See NON-NEGOTIABLE section above.**
 
 ## Deferred (explicitly, per user)
 - External filesystem storage for resumes (moving off base64-in-MongoDB) — deferred, not started this session.

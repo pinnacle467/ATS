@@ -24,6 +24,7 @@ import routes_notifications
 import routes_imports
 import routes_calendar
 from reminder_scheduler import reminder_loop
+from snapshot_scheduler import snapshot_loop
 import routes_career
 
 app = FastAPI(title='Pinnacle ATS')
@@ -68,6 +69,8 @@ async def startup():
     if created:
         logger.info('Seeded database (from snapshot or demo data)')
     asyncio.create_task(reminder_loop())
+    asyncio.create_task(snapshot_loop())
+    logger.info('snapshot_loop scheduled — data_seed/snapshot.json will be refreshed every 5 minutes')
 
 
 @app.on_event('shutdown')
