@@ -280,7 +280,10 @@ async def upload_media(files: list[UploadFile] = File(...), tags: Optional[str] 
             'tags': tag_list, 'uploaded_by': user['id'], 'created_at': now_iso(),
         }
         await db.media_library.insert_one(item)
+        # motor mutates `item` in place adding `_id` — strip both `_id` and `data_b64`
+        # before returning so responses stay JSON-serializable and lightweight.
         item.pop('data_b64', None)
+        item.pop('_id', None)
         created.append(item)
     return {'created': created, 'skipped': len(files) - len(created)}
 

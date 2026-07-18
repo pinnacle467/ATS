@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { api } from '@/lib/api';
+import { track } from './tracking';
 
 const CareerSettingsContext = createContext(null);
 export const useCareerSettings = () => useContext(CareerSettingsContext);
@@ -31,7 +32,14 @@ export default function CareerPublicLayout({ children }) {
   const [publishedPages, setPublishedPages] = useState([]);
   const [notFound, setNotFound] = useState(false);
   const [loading, setLoading] = useState(true);
+  const location = useLocation();
   const backendUrl = process.env.REACT_APP_BACKEND_URL;
+
+  // Track a page_view whenever the pathname/search changes (SPA navigations).
+  // Individual pages may fire more specific events (job_view, apply_start etc).
+  useEffect(() => {
+    track('page_view');
+  }, [location.pathname, location.search]);
 
   useEffect(() => {
     Promise.all([

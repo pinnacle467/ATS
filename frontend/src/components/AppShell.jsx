@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Bell,
+  BarChart3,
   Briefcase,
   CalendarDays,
   FileText,
@@ -40,6 +41,7 @@ const NAV = [
 
 const CAREER_NAV = [
   { to: '/career-portal', label: 'Dashboard', icon: Globe, testid: 'sidebar-nav-career-dashboard' },
+  { to: '/career-portal/analytics', label: 'Analytics', icon: BarChart3, testid: 'sidebar-nav-career-analytics' },
   { to: '/career-portal/jobs', label: 'Jobs', icon: Briefcase, testid: 'sidebar-nav-career-jobs' },
   { to: '/career-portal/content', label: 'Content', icon: FileText, testid: 'sidebar-nav-career-content' },
   { to: '/career-portal/media', label: 'Media Library', icon: ImageIcon, testid: 'sidebar-nav-career-media' },

@@ -26,6 +26,7 @@ import routes_calendar
 from reminder_scheduler import reminder_loop
 from snapshot_scheduler import snapshot_loop
 import routes_career
+import routes_analytics
 
 app = FastAPI(title='Pinnacle ATS')
 
@@ -48,6 +49,7 @@ api_router.include_router(routes_notifications.router)
 api_router.include_router(routes_imports.router)
 api_router.include_router(routes_calendar.router)
 api_router.include_router(routes_career.router)
+api_router.include_router(routes_analytics.router)
 
 app.include_router(api_router)
 

@@ -18,6 +18,7 @@ import CareerJobsPage from '@/pages/career/CareerJobsPage';
 import CareerSettingsPage from '@/pages/career/CareerSettingsPage';
 import CareerContentPage from '@/pages/career/CareerContentPage';
 import CareerMediaPage from '@/pages/career/CareerMediaPage';
+import CareerAnalyticsPage from '@/pages/career/CareerAnalyticsPage';
 import CareerPublicLayout from '@/pages/public/CareerPublicLayout';
 import CareerHomePage from '@/pages/public/CareerHomePage';
 import CareerJobsListPage from '@/pages/public/CareerJobsListPage';
@@ -57,6 +58,7 @@ function App() {
           <Route path="/career-portal/settings" element={<Protected roles={['admin', 'recruiter']}><CareerSettingsPage /></Protected>} />
           <Route path="/career-portal/content" element={<Protected roles={['admin', 'recruiter']}><CareerContentPage /></Protected>} />
           <Route path="/career-portal/media" element={<Protected roles={['admin', 'recruiter']}><CareerMediaPage /></Protected>} />
+          <Route path="/career-portal/analytics" element={<Protected roles={['admin', 'recruiter']}><CareerAnalyticsPage /></Protected>} />
           <Route path="/careers" element={<CareerPublicLayout><CareerHomePage /></CareerPublicLayout>} />
           <Route path="/careers/jobs" element={<CareerPublicLayout><CareerJobsListPage /></CareerPublicLayout>} />
           <Route path="/careers/jobs/:slug" element={<CareerPublicLayout><CareerJobDetailPage /></CareerPublicLayout>} />

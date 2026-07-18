@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { api, errMsg } from '@/lib/api';
 import { useCareerSettings } from './CareerPublicLayout';
 import { setMeta } from './CareerStaticPage';
+import { track } from './tracking';
 
 const EMPTY_FORM = {
   first_name: '', last_name: '', email: '', phone: '', location: '', linkedin_url: '', portfolio_url: '',
@@ -32,7 +33,12 @@ export default function CareerJobDetailPage() {
   const backendUrl = process.env.REACT_APP_BACKEND_URL;
 
   useEffect(() => {
-    api.get(`/career/public/jobs/${slug}`).then((r) => setJob(r.data)).catch(() => setNotFound(true));
+    api.get(`/career/public/jobs/${slug}`).then((r) => {
+      setJob(r.data);
+      // Analytics: fire once per job load so a job_view is attributed correctly
+      // (deep-link visits, share-link visits, SPA nav from list all covered).
+      track('job_view', { job_id: r.data?.id });
+    }).catch(() => setNotFound(true));
   }, [slug]);
 
   // SEO: page title, meta description, OG tags, and Google JobPosting JSON-LD
@@ -84,6 +90,7 @@ export default function CareerJobDetailPage() {
       Object.entries(form).forEach(([k, v]) => fd.append(k, v));
       fd.append('resume', resumeFile);
       await api.post('/career/public/apply', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      track('apply_submit', { job_id: job.id });
       setSubmitted(true);
     } catch (e2) {
       toast.error(errMsg(e2, 'Could not submit application'));
@@ -121,7 +128,7 @@ export default function CareerJobDetailPage() {
       </div>
 
       <div className="flex items-center gap-2 mt-6">
-        <Button onClick={() => setApplyOpen(true)} data-testid="career-apply-now-button">Apply Now</Button>
+        <Button onClick={() => { track('apply_start', { job_id: job.id }); setApplyOpen(true); }} data-testid="career-apply-now-button">Apply Now</Button>
         <div className="flex items-center gap-1 ml-2">
           <a href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`} target="_blank" rel="noreferrer" data-testid="career-share-linkedin">
             <Button size="icon" variant="outline"><Linkedin className="h-4 w-4" /></Button>
@@ -151,7 +158,7 @@ export default function CareerJobDetailPage() {
       )}
 
       <div className="mt-10 border-t border-border pt-6">
-        <Button onClick={() => setApplyOpen(true)} size="lg" className="w-full sm:w-auto" data-testid="career-apply-now-button-bottom">Apply Now</Button>
+        <Button onClick={() => { track('apply_start', { job_id: job.id }); setApplyOpen(true); }} size="lg" className="w-full sm:w-auto" data-testid="career-apply-now-button-bottom">Apply Now</Button>
       </div>
 
       <Dialog open={applyOpen} onOpenChange={(o) => { setApplyOpen(o); if (!o) { setSubmitted(false); setForm(EMPTY_FORM); setResumeFile(null); } }}>
