@@ -1,3 +1,4 @@
+import logging
 import os
 
 from fastapi import APIRouter, Depends
@@ -9,6 +10,7 @@ from google_calendar import authorization_url, exchange_code, get_userinfo
 from utils import now_iso
 
 router = APIRouter(tags=['calendar'])
+logger = logging.getLogger(__name__)
 
 APP_BASE_URL = os.environ['APP_BASE_URL']
 
@@ -21,11 +23,13 @@ async def google_login(user: dict = Depends(get_current_user)):
 @router.get('/oauth/calendar/callback')
 async def google_callback(code: str = None, state: str = None, error: str = None):
     if error or not code or not state:
+        logger.error(f'Google calendar callback missing code/state, error={error}')
         return RedirectResponse(f'{APP_BASE_URL}/interviews?calendar=error')
     try:
         tokens = exchange_code(code)
         info = get_userinfo(tokens['access_token'])
     except Exception:
+        logger.exception('Google calendar token exchange failed')
         return RedirectResponse(f'{APP_BASE_URL}/interviews?calendar=error')
     await db.users.update_one({'id': state}, {'$set': {
         'google_tokens': tokens,
