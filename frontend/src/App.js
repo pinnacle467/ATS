@@ -13,6 +13,13 @@ import InterviewsPage from '@/pages/InterviewsPage';
 import JobsPage from '@/pages/JobsPage';
 import JobDetailPage from '@/pages/JobDetailPage';
 import AdminPage from '@/pages/AdminPage';
+import CareerDashboardPage from '@/pages/career/CareerDashboardPage';
+import CareerJobsPage from '@/pages/career/CareerJobsPage';
+import CareerSettingsPage from '@/pages/career/CareerSettingsPage';
+import CareerPublicLayout from '@/pages/public/CareerPublicLayout';
+import CareerHomePage from '@/pages/public/CareerHomePage';
+import CareerJobsListPage from '@/pages/public/CareerJobsListPage';
+import CareerJobDetailPage from '@/pages/public/CareerJobDetailPage';
 
 const Protected = ({ children, roles }) => {
   const { user, loading } = useAuth();
@@ -42,6 +49,12 @@ function App() {
           <Route path="/jobs" element={<Protected roles={['admin', 'recruiter']}><JobsPage /></Protected>} />
           <Route path="/jobs/:id" element={<Protected roles={['admin', 'recruiter']}><JobDetailPage /></Protected>} />
           <Route path="/admin" element={<Protected roles={['admin']}><AdminPage /></Protected>} />
+          <Route path="/career-portal" element={<Protected roles={['admin', 'recruiter']}><CareerDashboardPage /></Protected>} />
+          <Route path="/career-portal/jobs" element={<Protected roles={['admin', 'recruiter']}><CareerJobsPage /></Protected>} />
+          <Route path="/career-portal/settings" element={<Protected roles={['admin', 'recruiter']}><CareerSettingsPage /></Protected>} />
+          <Route path="/careers" element={<CareerPublicLayout><CareerHomePage /></CareerPublicLayout>} />
+          <Route path="/careers/jobs" element={<CareerPublicLayout><CareerJobsListPage /></CareerPublicLayout>} />
+          <Route path="/careers/jobs/:slug" element={<CareerPublicLayout><CareerJobDetailPage /></CareerPublicLayout>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>

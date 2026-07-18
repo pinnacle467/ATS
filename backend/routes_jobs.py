@@ -1,4 +1,5 @@
 import base64
+import os
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
@@ -8,11 +9,12 @@ from auth import get_current_user, require_roles
 from database import db
 from fit_scorer import recompute_job_candidates_fit
 from resume_parser import extract_text_from_bytes
-from utils import clean, log_activity, log_audit, new_id, now_iso
+from utils import clean, log_activity, log_audit, new_id, now_iso, slugify
 
 router = APIRouter(prefix='/jobs', tags=['jobs'])
 
 DEFAULT_STAGES = ['Applied', 'Screening', 'Interview', 'Offer', 'Hired', 'Rejected']
+APP_BASE_URL = os.environ['APP_BASE_URL']
 
 
 class JobCreate(BaseModel):
@@ -23,6 +25,9 @@ class JobCreate(BaseModel):
     stages: Optional[list[str]] = None
     recruiter_id: Optional[str] = None
     status: str = 'open'
+    employment_type: Optional[str] = None
+    experience_level: Optional[str] = None
+    remote_type: Optional[str] = None
 
 
 class JobUpdate(BaseModel):
@@ -33,6 +38,19 @@ class JobUpdate(BaseModel):
     stages: Optional[list[str]] = None
     recruiter_id: Optional[str] = None
     status: Optional[str] = None
+    employment_type: Optional[str] = None
+    experience_level: Optional[str] = None
+    remote_type: Optional[str] = None
+
+
+async def _unique_slug(title: str) -> str:
+    base = slugify(title)
+    slug = base
+    i = 2
+    while await db.jobs.find_one({'slug': slug}):
+        slug = f'{base}-{i}'
+        i += 1
+    return slug
 
 
 @router.get('')
@@ -47,6 +65,7 @@ async def list_jobs(status: Optional[str] = None, department: Optional[str] = No
     for j in jobs:
         j['candidate_count'] = await db.candidates.count_documents({'job_id': j['id'], 'status': 'active'})
         j['has_jd'] = bool(j.get('jd_text'))
+        j['public_url'] = f"{APP_BASE_URL}/careers/jobs/{j['slug']}" if j.get('slug') else None
     return jobs
 
 
@@ -56,6 +75,7 @@ async def get_job(job_id: str, user: dict = Depends(get_current_user)):
     if not job:
         raise HTTPException(status_code=404, detail='Job not found')
     job['has_jd'] = bool(job.get('jd_text'))
+    job['public_url'] = f"{APP_BASE_URL}/careers/jobs/{job['slug']}" if job.get('slug') else None
     return job
 
 
@@ -65,6 +85,7 @@ async def create_job(body: JobCreate, user: dict = Depends(require_roles('admin'
     default_stages = [s['name'] for s in settings['stages']] if settings else DEFAULT_STAGES
     job = {
         'id': new_id(),
+        'slug': await _unique_slug(body.title),
         'title': body.title,
         'department': body.department,
         'location': body.location,
@@ -72,6 +93,10 @@ async def create_job(body: JobCreate, user: dict = Depends(require_roles('admin'
         'stages': body.stages or default_stages,
         'recruiter_id': body.recruiter_id or user['id'],
         'status': body.status,
+        'employment_type': body.employment_type,
+        'experience_level': body.experience_level,
+        'remote_type': body.remote_type,
+        'published': False,
         'created_at': now_iso(),
         'updated_at': now_iso(),
     }
@@ -157,3 +182,29 @@ async def delete_jd(job_id: str, user: dict = Depends(require_roles('admin', 're
     await db.candidates.update_many({'job_id': job_id}, {'$set': {'fit_score': None, 'fit_score_summary': None, 'fit_score_computed_at': None}})
     await log_audit(user, 'jd_removed', 'job', job_id, job['title'])
     return {'ok': True}
+
+
+@router.post('/{job_id}/publish')
+async def publish_job(job_id: str, user: dict = Depends(require_roles('admin', 'recruiter'))):
+    job = await db.jobs.find_one({'id': job_id})
+    if not job:
+        raise HTTPException(status_code=404, detail='Job not found')
+    if job.get('status') != 'open':
+        raise HTTPException(status_code=400, detail='Job must be Open to publish it to the career portal')
+    if not job.get('slug'):
+        await db.jobs.update_one({'id': job_id}, {'$set': {'slug': await _unique_slug(job['title'])}})
+    await db.jobs.update_one({'id': job_id}, {'$set': {'published': True, 'updated_at': now_iso()}})
+    await log_audit(user, 'job_published', 'job', job_id, job['title'])
+    updated = await db.jobs.find_one({'id': job_id}, {'_id': 0})
+    updated['public_url'] = f"{APP_BASE_URL}/careers/jobs/{updated['slug']}"
+    return clean(updated)
+
+
+@router.post('/{job_id}/unpublish')
+async def unpublish_job(job_id: str, user: dict = Depends(require_roles('admin', 'recruiter'))):
+    job = await db.jobs.find_one({'id': job_id})
+    if not job:
+        raise HTTPException(status_code=404, detail='Job not found')
+    await db.jobs.update_one({'id': job_id}, {'$set': {'published': False, 'updated_at': now_iso()}})
+    await log_audit(user, 'job_unpublished', 'job', job_id, job['title'])
+    return clean(await db.jobs.find_one({'id': job_id}, {'_id': 0}))

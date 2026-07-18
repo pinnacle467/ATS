@@ -1,9 +1,15 @@
+import re
 import uuid
 from datetime import datetime, timezone
 
 from pymongo import ReturnDocument
 
 from database import db
+
+
+def slugify(text: str) -> str:
+    s = re.sub(r'[^a-z0-9]+', '-', (text or '').lower()).strip('-')
+    return s or 'role'
 
 
 def now_iso() -> str:
