@@ -68,6 +68,15 @@ export default function InterviewsPage() {
     setSearchParams(searchParams, { replace: true });
   }, [searchParams, setSearchParams, loadCalStatus]);
 
+  useEffect(() => {
+    const scId = searchParams.get('scorecard');
+    if (!scId || interviews.length === 0) return;
+    const iv = interviews.find((i) => i.id === scId);
+    if (iv) setScorecardIv(iv);
+    searchParams.delete('scorecard');
+    setSearchParams(searchParams, { replace: true });
+  }, [searchParams, setSearchParams, interviews]);
+
   const connectCalendar = async () => {
     setCalBusy(true);
     try {

@@ -1,5 +1,6 @@
 import logging
 import os
+import asyncio
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -22,6 +23,7 @@ import routes_admin
 import routes_notifications
 import routes_imports
 import routes_calendar
+from reminder_scheduler import reminder_loop
 
 app = FastAPI(title='Pinnacle ATS')
 
@@ -63,6 +65,7 @@ async def startup():
     created = await seed_if_empty()
     if created:
         logger.info('Seeded database (from snapshot or demo data)')
+    asyncio.create_task(reminder_loop())
 
 
 @app.on_event('shutdown')

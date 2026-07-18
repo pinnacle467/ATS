@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from auth import get_current_user, require_roles
 from database import db
 from google_calendar import create_event, delete_event, free_busy, get_credentials_for_user, update_event
+from feedback_emails import send_scorecard_request
 from utils import clean, log_activity, log_audit, new_id, notify, now_iso
 
 router = APIRouter(tags=['interviews'])
@@ -203,12 +204,14 @@ async def complete_interview(interview_id: str, user: dict = Depends(get_current
         raise HTTPException(status_code=404, detail='Interview not found')
     if user['role'] == 'interviewer' and user['id'] not in iv.get('interviewer_ids', []):
         raise HTTPException(status_code=403, detail='Not your interview')
-    await db.interviews.update_one({'id': interview_id}, {'$set': {'status': 'feedback_pending'}})
+    await db.interviews.update_one({'id': interview_id}, {'$set': {'status': 'feedback_pending', 'completed_at': now_iso()}})
     cand = await db.candidates.find_one({'id': iv['candidate_id']})
     for iid in iv.get('interviewer_ids', []):
         await notify(iid, 'feedback', f"Feedback pending for your interview with {cand['name'] if cand else 'candidate'}", '/interviews')
     await log_activity(user, 'interview_completed', f"marked interview with {cand['name'] if cand else 'candidate'} as completed", candidate_id=iv['candidate_id'])
-    return clean(await db.interviews.find_one({'id': interview_id}, {'_id': 0}))
+    updated_iv = await db.interviews.find_one({'id': interview_id})
+    await send_scorecard_request(updated_iv)
+    return clean(updated_iv)
 
 
 @router.post('/interviews/{interview_id}/scorecard')
