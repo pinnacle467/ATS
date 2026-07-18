@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { Sprout } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import PinnacleLogo from '@/components/PinnacleLogo';
 import { useAuth } from '@/context/AuthContext';
 import { errMsg } from '@/lib/api';
 
@@ -46,11 +46,9 @@ export default function LoginPage() {
       <div className="flex items-center justify-center p-6">
         <div className="w-full max-w-md">
           <div className="flex items-center gap-2 mb-8">
-            <span className="h-10 w-10 rounded-xl bg-primary flex items-center justify-center">
-              <Sprout className="h-6 w-6 text-primary-foreground" />
-            </span>
+            <PinnacleLogo size={40} />
             <div>
-              <div className="font-display font-bold text-xl tracking-tight">Sprout ATS</div>
+              <div className="font-display font-bold text-xl tracking-tight">Pinnacle ATS</div>
               <div className="text-xs text-muted-foreground">Lightweight applicant tracking</div>
             </div>
           </div>

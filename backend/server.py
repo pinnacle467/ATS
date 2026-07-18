@@ -22,14 +22,14 @@ import routes_admin
 import routes_notifications
 import routes_imports
 
-app = FastAPI(title='Sprout ATS')
+app = FastAPI(title='Pinnacle ATS')
 
 api_router = APIRouter(prefix='/api')
 
 
 @api_router.get('/')
 async def root():
-    return {'message': 'Sprout ATS API', 'status': 'ok'}
+    return {'message': 'Pinnacle ATS API', 'status': 'ok'}
 
 
 api_router.include_router(routes_auth.router)

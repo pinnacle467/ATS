@@ -9,7 +9,6 @@ import {
   Menu,
   Search,
   Settings,
-  Sprout,
   UserPlus,
   Users,
 } from 'lucide-react';
@@ -24,6 +23,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import PinnacleLogo from '@/components/PinnacleLogo';
 import { useAuth } from '@/context/AuthContext';
 import { api } from '@/lib/api';
 
@@ -85,10 +85,8 @@ export default function AppShell({ children }) {
         }`}
       >
         <div className="h-14 flex items-center gap-2 px-5 border-b border-border">
-          <span className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-            <Sprout className="h-5 w-5 text-primary-foreground" />
-          </span>
-          <span className="font-display font-semibold text-lg tracking-tight">Sprout ATS</span>
+          <PinnacleLogo size={32} />
+          <span className="font-display font-semibold text-lg tracking-tight">Pinnacle ATS</span>
         </div>
         <nav className="flex-1 py-4 px-3 space-y-1">
           {navItems.map((n) => {
