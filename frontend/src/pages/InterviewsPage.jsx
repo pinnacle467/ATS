@@ -48,9 +48,8 @@ export default function InterviewsPage() {
   const isRecruiter = user?.role === 'admin' || user?.role === 'recruiter';
 
   const loadCalStatus = useCallback(() => {
-    if (!isRecruiter) return;
     api.get('/calendar/status').then((r) => setCalStatus(r.data)).catch(() => {});
-  }, [isRecruiter]);
+  }, []);
 
   useEffect(() => {
     loadCalStatus();
@@ -226,15 +225,22 @@ export default function InterviewsPage() {
         </div>
       </div>
 
-      {isRecruiter && calStatus && (
+      {calStatus && (
         <Card className="shadow-none" data-testid="google-calendar-card">
           <CardContent className="py-3 flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-2 text-sm">
               <CalendarCheck2 className={`h-4 w-4 ${calStatus.connected ? 'text-primary' : 'text-muted-foreground'}`} />
               {calStatus.connected ? (
-                <span data-testid="google-calendar-connected-label">Google Calendar connected as <span className="font-medium">{calStatus.email}</span> — interviews you schedule sync automatically.</span>
+                <span data-testid="google-calendar-connected-label">
+                  Google Calendar connected as <span className="font-medium">{calStatus.email}</span>
+                  {isRecruiter ? ' — interviews you schedule sync automatically.' : ' — recruiters can see your real availability when scheduling.'}
+                </span>
               ) : (
-                <span className="text-muted-foreground">Connect Google Calendar to auto-create events with Meet links when you schedule interviews.</span>
+                <span className="text-muted-foreground">
+                  {isRecruiter
+                    ? 'Connect Google Calendar to auto-create events with Meet links when you schedule interviews.'
+                    : 'Connect your Google Calendar so recruiters can see your real availability when scheduling interviews.'}
+                </span>
               )}
             </div>
             {calStatus.connected ? (

@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from auth import get_current_user, require_roles
 from database import db
-from google_calendar import create_event, delete_event, get_credentials_for_user, update_event
+from google_calendar import create_event, delete_event, free_busy, get_credentials_for_user, update_event
 from utils import clean, log_activity, log_audit, new_id, notify, now_iso
 
 router = APIRouter(tags=['interviews'])
@@ -302,8 +302,9 @@ async def check_availability(interviewer_ids: str, scheduled_at: str, duration_m
         raise HTTPException(status_code=422, detail='Invalid scheduled_at datetime')
     end = start + timedelta(minutes=duration_min)
     results = []
-    users = {u['id']: u for u in await db.users.find({'id': {'$in': ids}}, {'_id': 0, 'id': 1, 'name': 1}).to_list(50)}
+    users = {u['id']: u for u in await db.users.find({'id': {'$in': ids}}).to_list(50)}
     for iid in ids:
+        u = users.get(iid, {})
         slots = await db.availability.find({'user_id': iid, 'day_of_week': start.weekday()}, {'_id': 0}).to_list(20)
         in_slot = False
         for s in slots:
@@ -328,13 +329,28 @@ async def check_availability(interviewer_ids: str, scheduled_at: str, duration_m
             iv_end = iv_start + timedelta(minutes=iv.get('duration_min', 60))
             if iv_start < end and start < iv_end:
                 conflicts.append({'interview_id': iv['id'], 'scheduled_at': iv['scheduled_at'], 'duration_min': iv.get('duration_min', 60)})
+        google_connected = bool(u.get('google_tokens'))
+        google_conflicts = []
+        if google_connected:
+            try:
+                creds = await get_credentials_for_user(u)
+                busy = free_busy(creds, day_start, day_end) if creds else []
+                for b in busy:
+                    b_start = datetime.fromisoformat(b['start'].replace('Z', '+00:00'))
+                    b_end = datetime.fromisoformat(b['end'].replace('Z', '+00:00'))
+                    if b_start < end and start < b_end:
+                        google_conflicts.append({'start': b['start'], 'end': b['end']})
+            except Exception:
+                pass
         results.append({
             'interviewer_id': iid,
             'interviewer_name': users.get(iid, {}).get('name', '?'),
             'has_slots_defined': len(slots) > 0,
             'within_availability': in_slot if slots else None,
             'conflicts': conflicts,
-            'available': (in_slot if slots else True) and len(conflicts) == 0,
+            'google_calendar_connected': google_connected,
+            'google_conflicts': google_conflicts,
+            'available': (in_slot if slots else True) and len(conflicts) == 0 and len(google_conflicts) == 0,
         })
     return {'results': results}
 

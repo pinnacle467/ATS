@@ -186,8 +186,13 @@ export default function ScheduleInterviewDialog({ open, onOpenChange, onSchedule
                       ? 'Available'
                       : a.conflicts.length > 0
                         ? `Conflict — ${a.conflicts.length} existing interview${a.conflicts.length === 1 ? '' : 's'} at this time`
-                        : 'Outside working availability'}
+                        : a.google_conflicts?.length > 0
+                          ? 'Busy on their Google Calendar at this time'
+                          : 'Outside working availability'}
                     {a.has_slots_defined === false && <span className="text-muted-foreground"> (no availability slots defined)</span>}
+                    {a.google_calendar_connected && (
+                      <span className="text-muted-foreground"> · Google Calendar checked</span>
+                    )}
                   </div>
                 ))}
               </div>

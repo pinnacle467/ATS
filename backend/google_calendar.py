@@ -69,6 +69,15 @@ def _service(creds: Credentials):
     return build('calendar', 'v3', credentials=creds, cache_discovery=False)
 
 
+def free_busy(creds: Credentials, time_min_iso: str, time_max_iso: str, calendar_id: str = 'primary') -> list[dict]:
+    body = {'timeMin': time_min_iso, 'timeMax': time_max_iso, 'items': [{'id': calendar_id}]}
+    resp = _service(creds).freebusy().query(body=body).execute()
+    busy = []
+    for cal in resp.get('calendars', {}).values():
+        busy.extend(cal.get('busy', []))
+    return busy
+
+
 def create_event(creds: Credentials, summary: str, description: str, start_iso: str, end_iso: str,
                   attendee_emails: list[str], location: str = None, add_meet: bool = True) -> dict:
     body = {
