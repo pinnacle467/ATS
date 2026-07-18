@@ -11,7 +11,7 @@ from pydantic import BaseModel
 
 from auth import require_roles
 from database import db
-from utils import clean, log_activity, log_audit, new_id, now_iso
+from utils import clean, log_activity, log_audit, new_id, next_candidate_code, now_iso
 
 router = APIRouter(prefix='/imports', tags=['imports'])
 
@@ -312,6 +312,7 @@ async def commit_import(import_id: str, body: CommitBody, user: dict = Depends(r
 
         doc = {
             'id': new_id(),
+            'candidate_code': await next_candidate_code(),
             'name': name,
             'email': email,
             'phone': vals.get('phone') or None,

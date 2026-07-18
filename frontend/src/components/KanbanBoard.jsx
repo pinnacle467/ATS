@@ -24,6 +24,9 @@ function CandidateCard({ candidate, dragging }) {
           <FileText className={`h-3.5 w-3.5 shrink-0 ${candidate.resume_file_id ? 'text-primary' : 'text-muted-foreground/30'}`} data-testid={candidate.resume_file_id ? 'resume-indicator-yes' : 'resume-indicator-no'} />
         </span>
       </div>
+      {candidate.candidate_code && (
+        <div className="text-[10px] font-mono text-muted-foreground/70" data-testid={`kanban-candidate-code-${candidate.id}`}>{candidate.candidate_code}</div>
+      )}
       <div className="text-xs text-muted-foreground truncate">{candidate.current_title || '—'}{candidate.current_company ? ` @ ${candidate.current_company}` : ''}</div>
       {candidate.location && (
         <div className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3" />{candidate.location}</div>

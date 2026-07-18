@@ -24,7 +24,7 @@ async def _restore_snapshot() -> bool:
     with open(SNAPSHOT_PATH) as f:
         snap = json.load(f)
     collections = ['users', 'jobs', 'candidates', 'interviews', 'notes', 'activities',
-                   'scorecards', 'departments', 'tags', 'interview_kits', 'availability', 'audit_log', 'files']
+                   'scorecards', 'departments', 'tags', 'interview_kits', 'availability', 'audit_log', 'files', 'counters']
     for name in collections:
         docs = snap.get(name) or []
         if docs:

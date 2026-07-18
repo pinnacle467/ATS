@@ -1,6 +1,8 @@
 import uuid
 from datetime import datetime, timezone
 
+from pymongo import ReturnDocument
+
 from database import db
 
 
@@ -59,3 +61,15 @@ async def notify(user_id: str, type_: str, message: str, link: str = None):
         'read': False,
         'created_at': now_iso(),
     })
+
+
+async def next_candidate_code() -> str:
+    """Atomically issue the next human-readable candidate ID, e.g. CAND-0001."""
+    doc = await db.counters.find_one_and_update(
+        {'_id': 'candidate_seq'},
+        {'$inc': {'seq': 1}},
+        upsert=True,
+        return_document=ReturnDocument.AFTER,
+    )
+    seq = doc['seq'] if doc else 1
+    return f'CAND-{seq:04d}'

@@ -271,6 +271,9 @@ export default function CandidateProfilePage() {
           <div>
             <div className="flex items-center gap-3 flex-wrap">
               <h1 className="font-display text-2xl font-semibold tracking-tight" data-testid="candidate-name">{cand.name}</h1>
+              {cand.candidate_code && (
+                <span className="text-xs font-mono text-muted-foreground bg-secondary rounded-full px-2.5 py-0.5" data-testid="candidate-code">{cand.candidate_code}</span>
+              )}
               <StageBadge stage={cand.stage} />
               {cand.low_confidence_fields?.length > 0 && (
                 <Badge variant="outline" className="text-amber-700 border-amber-300 bg-amber-50">Needs review: {cand.low_confidence_fields.join(', ')}</Badge>

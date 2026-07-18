@@ -347,6 +347,7 @@ export default function CandidatesPage() {
                   </TableHead>
                 )}
                 <TableHead>Candidate</TableHead>
+                <TableHead className="hidden sm:table-cell">ID</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Stage</TableHead>
                 <TableHead className="hidden md:table-cell">Source</TableHead>
@@ -358,10 +359,10 @@ export default function CandidatesPage() {
             </TableHeader>
             <TableBody>
               {loading && (
-                <TableRow><TableCell colSpan={9} className="text-center py-10 text-muted-foreground">Loading candidates...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={10} className="text-center py-10 text-muted-foreground">Loading candidates...</TableCell></TableRow>
               )}
               {!loading && data.items.length === 0 && (
-                <TableRow><TableCell colSpan={9} className="text-center py-10 text-muted-foreground">No candidates found. Try adjusting filters.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={10} className="text-center py-10 text-muted-foreground">No candidates found. Try adjusting filters.</TableCell></TableRow>
               )}
               {!loading && data.items.map((c) => (
                 <TableRow key={c.id} className="cursor-pointer" data-testid={`candidate-row-${c.id}`} onClick={() => navigate(`/candidates/${c.id}`)}>
@@ -382,6 +383,7 @@ export default function CandidatesPage() {
                     </div>
                     <div className="text-xs text-muted-foreground">{c.email || 'no email'}</div>
                   </TableCell>
+                  <TableCell className="hidden sm:table-cell text-xs font-mono text-muted-foreground" data-testid={`candidate-code-${c.id}`}>{c.candidate_code || '—'}</TableCell>
                   <TableCell className="text-sm">{c.job_title || '—'}</TableCell>
                   <TableCell><StageBadge stage={c.stage} /></TableCell>
                   <TableCell className="hidden md:table-cell text-sm capitalize">{(c.source || '').replace('_', ' ')}</TableCell>

@@ -259,7 +259,7 @@ export default function JobDetailPage() {
                       <span className="truncate">{c.name}</span>
                       <ResumeIndicator hasResume={!!c.resume_file_id} />
                     </div>
-                    <div className="text-[11px] text-muted-foreground truncate">{c.current_title || c.email || '—'}</div>
+                    <div className="text-[11px] text-muted-foreground truncate">{c.candidate_code ? `${c.candidate_code} · ` : ''}{c.current_title || c.email || '—'}</div>
                   </button>
                 ))}
               </CardContent>

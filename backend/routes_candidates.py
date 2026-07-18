@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from auth import get_current_user, interviewer_candidate_ids, require_roles
 from database import db
 from fit_scorer import recompute_candidate_fit
-from utils import clean, log_activity, log_audit, new_id, notify, now_iso
+from utils import clean, log_activity, log_audit, new_id, next_candidate_code, notify, now_iso
 
 router = APIRouter(prefix='/candidates', tags=['candidates'])
 
@@ -150,10 +150,10 @@ async def export_csv(
     users = {u['id']: u.get('name') for u in await db.users.find({}, {'_id': 0, 'id': 1, 'name': 1}).to_list(500)}
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(['Name', 'Email', 'Phone', 'Title', 'Company', 'Location', 'Job', 'Stage', 'Status', 'Source', 'Recruiter', 'Tags', 'Skills', 'Applied At'])
+    w.writerow(['Candidate ID', 'Name', 'Email', 'Phone', 'Title', 'Company', 'Location', 'Job', 'Stage', 'Status', 'Source', 'Recruiter', 'Tags', 'Skills', 'Applied At'])
     for c in items:
         w.writerow([
-            c.get('name'), c.get('email'), c.get('phone'), c.get('current_title'), c.get('current_company'),
+            c.get('candidate_code'), c.get('name'), c.get('email'), c.get('phone'), c.get('current_title'), c.get('current_company'),
             c.get('location'), jobs.get(c.get('job_id'), ''), c.get('stage'), c.get('status'), c.get('source'),
             users.get(c.get('recruiter_id'), ''), '; '.join(c.get('tags') or []), '; '.join(c.get('skills') or []),
             c.get('applied_at', ''),
@@ -188,6 +188,7 @@ async def create_candidate(body: CandidateCreate, background_tasks: BackgroundTa
         stage = (job.get('stages') or ['Applied'])[0] if job else 'Applied'
     cand = {
         'id': new_id(),
+        'candidate_code': await next_candidate_code(),
         'name': body.name,
         'email': body.email,
         'phone': body.phone,
