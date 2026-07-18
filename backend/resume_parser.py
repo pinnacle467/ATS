@@ -6,6 +6,8 @@ import re
 
 from emergentintegrations.llm.chat import LlmChat, UserMessage
 
+from llm_helper import send_with_retry
+
 PARSE_SYSTEM_PROMPT = """You are an expert resume parser. You receive raw text extracted from a resume (PDF/DOCX) and return ONLY a valid JSON object — no markdown fences, no commentary.
 
 JSON schema:
@@ -81,13 +83,13 @@ async def parse_resume_text(text: str, session_label: str) -> dict:
     ).with_model('openai', 'gpt-5.4-mini')
 
     msg = UserMessage(text=f'Parse this resume text:\n\n{text[:15000]}')
-    resp = await chat.send_message(msg)
+    resp = await send_with_retry(chat, msg)
     raw = _strip_fences(resp if isinstance(resp, str) else str(resp))
     try:
         parsed = json.loads(raw)
     except json.JSONDecodeError:
         msg2 = UserMessage(text='Your previous output was not valid JSON. Return ONLY the raw JSON object, nothing else.')
-        resp2 = await chat.send_message(msg2)
+        resp2 = await send_with_retry(chat, msg2)
         raw2 = _strip_fences(resp2 if isinstance(resp2, str) else str(resp2))
         parsed = json.loads(raw2)
     merged = {**EMPTY_PARSE, **{k: v for k, v in parsed.items() if k in EMPTY_PARSE}}

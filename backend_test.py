@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 
 # Public endpoint from frontend/.env
-BASE_URL = "https://ats-import-build.preview.emergentagent.com/api"
+BASE_URL = "https://4c41e85e-3b6c-42c0-b96d-f8ad30f6a3c7.preview.emergentagent.com/api"
 
 # Test credentials from /app/memory/test_credentials.md
 CREDENTIALS = {
@@ -1798,6 +1798,7 @@ class ATSTester:
 def main():
     tester = ATSTester()
     
+    
     print(f"\n{'='*60}")
     print(f"🚀 Sprout ATS Backend API Testing")
     print(f"   Base URL: {BASE_URL}")
@@ -1806,10 +1807,11 @@ def main():
     # Run all tests
     tester.test_auth()
     tester.test_rbac()
-    tester.test_resume_compression()  # NEW: Test resume auto-compression feature
+    tester.test_bulk_resume_concurrency_fix()  # NEW: Test bulk resume concurrency fix (429 rate limit)
+    tester.test_resume_compression()  # Test resume auto-compression feature
     tester.test_resume_parsing()
     tester.test_candidates()
-    tester.test_bulk_delete()  # NEW: Test bulk delete feature
+    tester.test_bulk_delete()  # Test bulk delete feature
     tester.test_jobs()
     tester.test_interviews()
     tester.test_dashboard()

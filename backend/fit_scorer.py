@@ -7,6 +7,7 @@ import re
 from emergentintegrations.llm.chat import LlmChat, UserMessage
 
 from database import db
+from llm_helper import send_with_retry
 from resume_parser import extract_text_from_bytes
 from utils import now_iso
 
@@ -32,7 +33,7 @@ async def _score_text(resume_text: str, jd_text: str, session_label: str) -> dic
         system_message=FIT_SYSTEM_PROMPT,
     ).with_model('openai', 'gpt-5.4-mini')
     msg = UserMessage(text=f'JOB DESCRIPTION:\n{jd_text[:8000]}\n\nCANDIDATE RESUME/PROFILE:\n{resume_text[:8000]}')
-    resp = await chat.send_message(msg)
+    resp = await send_with_retry(chat, msg)
     raw = _strip_fences(resp if isinstance(resp, str) else str(resp))
     parsed = json.loads(raw)
     try:
