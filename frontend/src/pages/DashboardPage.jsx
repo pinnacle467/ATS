@@ -66,11 +66,11 @@ export default function DashboardPage() {
 
   const kpis = useMemo(
     () => [
-      { label: 'Open Roles', value: stats?.open_roles, icon: Briefcase },
-      { label: 'Active Candidates', value: stats?.active_candidates, icon: Users },
-      { label: 'Interviews This Week', value: stats?.interviews_this_week, icon: CalendarDays },
-      { label: 'Offers Pending', value: stats?.offers_pending, icon: FileText },
-      { label: 'Avg. Time to Hire', value: stats?.time_to_hire_avg != null ? `${stats.time_to_hire_avg}d` : '—', icon: Clock },
+      { label: 'Open Roles', value: stats?.open_roles, icon: Briefcase, link: '/jobs?status=open', testid: 'dashboard-kpi-open-roles' },
+      { label: 'Active Candidates', value: stats?.active_candidates, icon: Users, link: '/candidates', testid: 'dashboard-kpi-active-candidates' },
+      { label: 'Interviews This Week', value: stats?.interviews_this_week, icon: CalendarDays, link: '/interviews', testid: 'dashboard-kpi-interviews' },
+      { label: 'Offers Pending', value: stats?.offers_pending, icon: FileText, link: '/candidates?stage=Offer', testid: 'dashboard-kpi-offers' },
+      { label: 'Avg. Time to Hire', value: stats?.time_to_hire_avg != null ? `${stats.time_to_hire_avg}d` : '—', icon: Clock, link: '/candidates?stage=Hired', testid: 'dashboard-kpi-time-to-hire' },
     ],
     [stats]
   );
@@ -126,7 +126,15 @@ export default function DashboardPage() {
         {kpis.map((k) => {
           const Icon = k.icon;
           return (
-            <Card key={k.label} className="shadow-none" data-testid="dashboard-kpi-card">
+            <Card
+              key={k.label}
+              className="shadow-none cursor-pointer transition-colors hover:border-primary/50 hover:bg-secondary/40"
+              data-testid={k.testid}
+              role="button"
+              tabIndex={0}
+              onClick={() => navigate(k.link)}
+              onKeyDown={(e) => e.key === 'Enter' && navigate(k.link)}
+            >
               <CardContent className="pt-5 pb-4">
                 <div className="flex items-center justify-between">
                   <span className="text-xs uppercase tracking-wide text-muted-foreground font-medium">{k.label}</span>
@@ -145,6 +153,7 @@ export default function DashboardPage() {
       <Card className="shadow-none" data-testid="dashboard-pipeline-snapshot">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-semibold">Pipeline Snapshot</CardTitle>
+          <p className="text-xs text-muted-foreground">Click a stage to view its candidates</p>
         </CardHeader>
         <CardContent>
           <div className="h-64">
@@ -154,7 +163,14 @@ export default function DashboardPage() {
                 <XAxis dataKey="stage" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 12 }} axisLine={false} tickLine={false} allowDecimals={false} />
                 <Tooltip cursor={{ fill: 'hsl(210 16% 94%)' }} contentStyle={{ borderRadius: 8, border: '1px solid hsl(214 18% 88%)', fontSize: 13 }} />
-                <Bar dataKey="count" radius={[6, 6, 0, 0]} maxBarSize={56}>
+                <Bar
+                  dataKey="count"
+                  radius={[6, 6, 0, 0]}
+                  maxBarSize={56}
+                  cursor="pointer"
+                  onClick={(entry) => entry?.stage && navigate(`/candidates?stage=${encodeURIComponent(entry.stage)}`)}
+                  data-testid="dashboard-pipeline-bar"
+                >
                   {(stats?.pipeline || []).map((entry, i) => (
                     <Cell key={entry.stage} fill={STAGE_COLORS[i % STAGE_COLORS.length]} />
                   ))}
@@ -210,6 +226,8 @@ export default function DashboardPage() {
                     <span className="font-medium">{a.actor_name}</span>{' '}
                     {a.candidate_id ? (
                       <Link to={`/candidates/${a.candidate_id}`} className="hover:underline">{a.message}</Link>
+                    ) : a.job_id ? (
+                      <Link to={`/jobs/${a.job_id}`} className="hover:underline">{a.message}</Link>
                     ) : (
                       a.message
                     )}

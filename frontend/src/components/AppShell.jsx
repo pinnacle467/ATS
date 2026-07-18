@@ -85,8 +85,10 @@ export default function AppShell({ children }) {
         }`}
       >
         <div className="h-14 flex items-center gap-2 px-5 border-b border-border">
-          <PinnacleLogo size={32} />
-          <span className="font-display font-semibold text-lg tracking-tight">Pinnacle ATS</span>
+          <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity" data-testid="app-logo-link">
+            <PinnacleLogo size={32} />
+            <span className="font-display font-semibold text-lg tracking-tight">Pinnacle ATS</span>
+          </Link>
         </div>
         <nav className="flex-1 py-4 px-3 space-y-1">
           {navItems.map((n) => {
