@@ -121,18 +121,43 @@ export default function LoginPage() {
         </div>
       </div>
 
-      <div className="hidden lg:block relative bg-accent">
+      <div className="hidden lg:block relative bg-emerald-950 overflow-hidden">
         <img
-          src="https://images.unsplash.com/photo-1588091210060-1ee4fab270ae?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2ODl8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjBvZmZpY2UlMjBoaXJpbmclMjB0ZWFtJTIwbWVldGluZyUyMG1pbmltYWx8ZW58MHx8fGdyZWVufDE3ODQxMjE1NDh8MA&ixlib=rb-4.1.0&q=85"
-          alt="Hiring team collaborating"
-          className="absolute inset-0 h-full w-full object-cover opacity-80"
+          src="https://images.pexels.com/photos/9301835/pexels-photo-9301835.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=1080&w=1440"
+          alt="Diverse hiring team collaborating in a modern office"
+          className="absolute inset-0 h-full w-full object-cover opacity-90"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-foreground/60 to-transparent" />
-        <div className="absolute bottom-10 left-10 right-10">
-          <p className="font-display text-2xl font-semibold text-white leading-snug">
-            Hire faster with a pipeline your whole team can see.
+        {/* Emerald brand overlay + darker bottom gradient for legible caption */}
+        <div className="absolute inset-0 bg-gradient-to-br from-emerald-900/30 via-transparent to-emerald-950/50" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+
+        {/* Floating trust chips */}
+        <div className="absolute top-8 right-8 flex flex-col items-end gap-2">
+          <div className="inline-flex items-center gap-2 rounded-full bg-white/15 backdrop-blur-md border border-white/20 px-3 py-1.5 text-xs font-medium text-white shadow-sm">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            AI-powered resume parsing
+          </div>
+          <div className="inline-flex items-center gap-2 rounded-full bg-white/15 backdrop-blur-md border border-white/20 px-3 py-1.5 text-xs font-medium text-white shadow-sm">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            Structured interview scorecards
+          </div>
+        </div>
+
+        <div className="absolute bottom-12 left-12 right-12">
+          <p className="font-display text-3xl xl:text-4xl font-semibold text-white leading-tight tracking-tight">
+            Hire faster with a pipeline<br />your whole team can see.
           </p>
-          <p className="text-sm text-white/80 mt-2">AI resume parsing · kanban pipeline · structured scorecards</p>
+          <p className="text-sm text-white/80 mt-3 max-w-md leading-relaxed">
+            One workspace for resumes, interviews, and scorecards — so recruiters, hiring managers, and interviewers finally stay in sync.
+          </p>
+          <div className="mt-6 flex items-center gap-4 text-xs text-white/70">
+            <div className="flex items-center gap-1.5">
+              <div className="h-8 w-8 rounded-full bg-emerald-500/90 border-2 border-white/30" />
+              <div className="h-8 w-8 rounded-full bg-emerald-400/90 border-2 border-white/30 -ml-4" />
+              <div className="h-8 w-8 rounded-full bg-emerald-300/90 border-2 border-white/30 -ml-4" />
+            </div>
+            <span>Trusted by hiring teams shipping roles this week</span>
+          </div>
         </div>
       </div>
     </div>
