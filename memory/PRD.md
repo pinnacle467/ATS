@@ -2,7 +2,7 @@
 
 ## Product
 Lightweight Greenhouse-style ATS for internal use. React + FastAPI + MongoDB, Tailwind + shadcn/ui.
-Preview: https://ats-import-flow.preview.emergentagent.com
+Preview: https://ats-import-build.preview.emergentagent.com
 
 ## Core proven in POC
 AI resume parsing (PDF/DOCX → OpenAI gpt-5.4-mini via Emergent LLM key → structured JSON + confidence flags).
