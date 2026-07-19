@@ -87,6 +87,12 @@ def create_event(creds: Credentials, summary: str, description: str, start_iso: 
         'start': {'dateTime': start_iso},
         'end': {'dateTime': end_iso},
         'attendees': [{'email': e} for e in attendee_emails if e],
+        # Privacy: don't let attendees see the guest list or invite others.
+        # Each attendee only sees themselves + the organizer on their invite.
+        'guestsCanSeeOtherGuests': False,
+        'guestsCanInviteOthers': False,
+        'guestsCanModify': False,
+        'visibility': 'private',
     }
     if location:
         body['location'] = location
@@ -100,6 +106,11 @@ def create_event(creds: Credentials, summary: str, description: str, start_iso: 
 def update_event(creds: Credentials, event_id: str, **fields) -> dict:
     service = _service(creds)
     event = service.events().get(calendarId='primary', eventId=event_id).execute()
+    # Preserve privacy settings on every update (Google Calendar sometimes drops them).
+    event['guestsCanSeeOtherGuests'] = False
+    event['guestsCanInviteOthers'] = False
+    event['guestsCanModify'] = False
+    event['visibility'] = 'private'
     if 'start_iso' in fields:
         event['start'] = {'dateTime': fields['start_iso']}
     if 'end_iso' in fields:
@@ -108,6 +119,10 @@ def update_event(creds: Credentials, event_id: str, **fields) -> dict:
         event['attendees'] = [{'email': e} for e in fields['attendee_emails'] if e]
     if 'location' in fields:
         event['location'] = fields['location']
+    if 'description' in fields:
+        event['description'] = fields['description']
+    if 'summary' in fields:
+        event['summary'] = fields['summary']
     return service.events().update(calendarId='primary', eventId=event_id, body=event, sendUpdates='all').execute()
 
 

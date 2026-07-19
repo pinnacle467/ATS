@@ -16,6 +16,38 @@ router = APIRouter(tags=['interviews'])
 DEFAULT_ATTRS = ['Communication', 'Technical Skill', 'Problem Solving', 'Culture Fit']
 
 
+def _build_event_description(iv: dict, cand: dict, job: dict | None) -> str:
+    """Build the calendar event description with JD attached for candidate visibility."""
+    lines: list[str] = []
+    it_type = (iv.get('type') or 'interview').replace('_', ' ').title()
+    stage = iv.get('stage') or (job or {}).get('stage')
+    lines.append(f"Interview type: {it_type}")
+    if stage:
+        lines.append(f"Stage: {stage}")
+    if job and job.get('title'):
+        lines.append(f"Role: {job['title']}")
+    lines.append('')
+    lines.append(f"Candidate: {cand.get('name', '')}")
+    lines.append(f"Candidate profile (internal): {os.environ['APP_BASE_URL']}/candidates/{cand['id']}")
+    if iv.get('notes'):
+        lines.append('')
+        lines.append('Notes for interviewers:')
+        lines.append(iv['notes'].strip())
+    if job and (job.get('jd_text') or job.get('description')):
+        jd_body = (job.get('jd_text') or job.get('description') or '').strip()
+        if len(jd_body) > 6000:
+            jd_body = jd_body[:6000].rstrip() + '\n\n… (truncated — see full JD on the careers site)'
+        lines.append('')
+        lines.append('=' * 40)
+        lines.append(f"JOB DESCRIPTION — {job.get('title', '')}")
+        lines.append('=' * 40)
+        lines.append(jd_body)
+        if job.get('slug'):
+            lines.append('')
+            lines.append(f"Full posting: {os.environ['APP_BASE_URL']}/careers/jobs/{job['slug']}")
+    return '\n'.join(lines).strip()
+
+
 async def _sync_calendar_on_create(user: dict, iv: dict, cand: dict):
     creds = await get_credentials_for_user(user)
     if not creds:
@@ -24,11 +56,16 @@ async def _sync_calendar_on_create(user: dict, iv: dict, cand: dict):
     attendees = [i['email'] for i in interviewers if i.get('email')] + ([cand['email']] if cand.get('email') else [])
     start = datetime.fromisoformat(iv['scheduled_at'].replace('Z', '+00:00'))
     end = start + timedelta(minutes=iv['duration_min'])
+    # Fetch the job so we can attach the JD to the invite for candidate visibility.
+    job = None
+    if iv.get('job_id'):
+        job = await db.jobs.find_one({'id': iv['job_id']}, {'_id': 0})
+    description = _build_event_description(iv, cand, job)
     try:
         event = create_event(
             creds,
             summary=f"Interview: {cand['name']} ({iv['type'].replace('_', ' ').title()})",
-            description=(iv.get('notes') or '') + f"\n\nCandidate profile: {os.environ['APP_BASE_URL']}/candidates/{cand['id']}",
+            description=description,
             start_iso=start.isoformat(), end_iso=end.isoformat(),
             attendee_emails=attendees, location=iv.get('location'), add_meet=not bool(iv.get('video_link')),
         )
@@ -63,6 +100,13 @@ async def _sync_calendar_on_update(user: dict, iv: dict, updates: dict):
             fields['attendee_emails'] = [i['email'] for i in interviewers if i.get('email')] + ([cand['email']] if cand and cand.get('email') else [])
         if 'location' in updates:
             fields['location'] = updates['location']
+        # Refresh description if notes changed (or type/stage which affect the header lines).
+        if any(k in updates for k in ('notes', 'type', 'stage')):
+            merged_iv = {**iv, **updates}
+            cand_full = await db.candidates.find_one({'id': iv['candidate_id']}, {'_id': 0})
+            job_full = await db.jobs.find_one({'id': merged_iv.get('job_id')}, {'_id': 0}) if merged_iv.get('job_id') else None
+            if cand_full:
+                fields['description'] = _build_event_description(merged_iv, cand_full, job_full)
         if fields:
             update_event(creds, iv['google_event_id'], **fields)
     except Exception:
