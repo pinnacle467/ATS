@@ -46,6 +46,7 @@ function parsedToDraft(result) {
     _filename: result.filename,
     _match: result.match || null,
     _mergeChoice: result.match ? (result.match.match_type === 'email' ? 'merge' : 'create') : 'create',
+    // NOTE: match_type is now one of 'email' (auto-merge), 'name+phone' or 'name+company' (auto-create but banner shown)
   };
 }
 
@@ -101,7 +102,12 @@ function DraftForm({ draft, onChange, jobs, tags, onSave, onDiscard, saving, ind
               <strong>Matched existing candidate:</strong> {draft._match.candidate_name}
               {' '}
               <span className="text-xs text-amber-700">
-                ({draft._match.match_type === 'email' ? 'same email address' : 'same name — please confirm this is the same person'})
+                ({
+                  draft._match.match_type === 'email' ? 'same email address'
+                  : draft._match.match_type === 'name+phone' ? 'same name and phone number'
+                  : draft._match.match_type === 'name+company' ? 'same name and current company'
+                  : 'possible duplicate — please confirm'
+                })
               </span>
             </p>
             <div className="flex items-center gap-4">
@@ -430,11 +436,13 @@ export default function AddCandidatePage() {
   };
 
   // Save every draft that doesn't need a merge decision, using bulkJobId when a draft
-  // doesn't already have a job. Skips drafts flagged with a "same-person" match banner
-  // so the recruiter can review those manually.
+  // doesn't already have a job. Skips ONLY drafts the user has flagged for merge
+  // (either explicitly, or auto-set to 'merge' by an email match) so those get
+  // manually merged one-at-a-time. Drafts with a name+phone/company match banner
+  // where the user chose 'create' still save in the bulk pass.
   const saveAllDrafts = async () => {
     const eligible = drafts.map((d, i) => ({ d, i })).filter(({ d }) => {
-      if (d._match) return false; // needs manual review
+      if (d._match && d._mergeChoice === 'merge') return false; // will be merged manually
       if (!d.name?.trim()) return false;
       if (d.email && !EMAIL_RE.test(d.email)) return false;
       return true;
@@ -452,6 +460,7 @@ export default function AddCandidatePage() {
     setBulkProgress({ current: 0, total: eligible.length, phase: 'Saving to pipeline' });
     let saved = 0;
     const failedIdx = [];
+    const failReasons = [];
     for (const { d, i } of eligible) {
       const body = { ...d };
       delete body._filename;
@@ -466,17 +475,29 @@ export default function AddCandidatePage() {
         saved += 1;
       } catch (e) {
         failedIdx.push(i);
+        failReasons.push(`${d.name || d._filename || 'draft'}: ${errMsg(e, 'save failed')}`);
       }
       setBulkProgress({ current: saved + failedIdx.length, total: eligible.length, phase: 'Saving to pipeline' });
     }
-    // Remove saved drafts, keep failures + match-banner drafts for review
-    const keepSet = new Set([...failedIdx, ...drafts.map((d, i) => (d._match ? i : null)).filter((i) => i !== null)]);
+    // Remove saved drafts, keep failures + drafts the user chose to merge (for review)
+    const keepSet = new Set([
+      ...failedIdx,
+      ...drafts
+        .map((d, i) => (d._match && d._mergeChoice === 'merge' ? i : null))
+        .filter((i) => i !== null),
+    ]);
     setDrafts((ds) => ds.filter((_, i) => keepSet.has(i)));
     setSavingAll(false);
     setBulkProgress(null);
     if (saved) toast.success(`Saved ${saved} candidate${saved === 1 ? '' : 's'} to the pipeline`);
-    if (failedIdx.length) toast.error(`${failedIdx.length} draft${failedIdx.length === 1 ? '' : 's'} failed — review remaining items below`);
-    if (!failedIdx.length && !drafts.some((d) => d._match)) {
+    if (failedIdx.length) {
+      const shown = failReasons.slice(0, 3).join('\n');
+      toast.error(
+        `${failedIdx.length} draft${failedIdx.length === 1 ? '' : 's'} failed:\n${shown}${failReasons.length > 3 ? `\n…and ${failReasons.length - 3} more` : ''}`,
+        { duration: 8000 },
+      );
+    }
+    if (!failedIdx.length && !drafts.some((d) => d._match && d._mergeChoice === 'merge')) {
       // clean exit — go to Candidates list
       navigate('/candidates');
     }
@@ -577,7 +598,7 @@ export default function AddCandidatePage() {
                 </Select>
                 <Button size="sm" onClick={saveAllDrafts} disabled={savingAll} data-testid="bulk-save-all-button">
                   {savingAll ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Save className="h-4 w-4 mr-1" />}
-                  Save All ({drafts.filter((d) => !d._match).length})
+                  Save All ({drafts.filter((d) => !(d._match && d._mergeChoice === 'merge')).length})
                 </Button>
               </div>
             )}

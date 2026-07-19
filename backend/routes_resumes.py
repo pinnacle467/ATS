@@ -18,9 +18,17 @@ MAX_SIZE = 10 * 1024 * 1024  # 10 MB
 
 async def _find_match(parsed: dict):
     """Look for an existing candidate this resume likely belongs to (e.g. one
-    created via a CSV/Excel import that doesn't have a resume yet). Email match
-    is treated as high-confidence; name-only match as a lower-confidence hint
-    the user should confirm before merging."""
+    created via a CSV/Excel import that doesn't have a resume yet).
+
+    Match rules (ordered by confidence):
+      1. Email match — high confidence, flag as 'email'.
+      2. Name + phone match — good confidence, flag as 'name+phone'.
+      3. Name + current_company match — reasonable confidence, flag as 'name+company'.
+
+    Name-alone matches are NOT flagged (too many false positives on common names
+    like "Abhishek Kumar" — Jul 2025 bug where 10/11 bulk uploads got matched
+    against unrelated existing candidates and were silently excluded from save).
+    """
     email = (parsed.get('email') or '').strip()
     name = (parsed.get('name') or '').strip()
     if email:
@@ -28,9 +36,25 @@ async def _find_match(parsed: dict):
         if cand:
             return {'candidate_id': cand['id'], 'candidate_name': cand['name'], 'match_type': 'email'}
     if name:
-        cand = await db.candidates.find_one({'name': {'$regex': f'^{re.escape(name)}$', '$options': 'i'}})
-        if cand:
-            return {'candidate_id': cand['id'], 'candidate_name': cand['name'], 'match_type': 'name'}
+        name_query = {'name': {'$regex': f'^{re.escape(name)}$', '$options': 'i'}}
+        phone = (parsed.get('phone') or '').strip()
+        if phone:
+            # Match phones loosely — strip non-digits so different formattings of
+            # the same number ("(555) 123-4567" vs "5551234567") still match.
+            digits = re.sub(r'\D', '', phone)
+            if len(digits) >= 8:
+                cands = await db.candidates.find(name_query, {'_id': 0, 'id': 1, 'name': 1, 'phone': 1}).to_list(20)
+                for c in cands:
+                    if re.sub(r'\D', '', c.get('phone') or '') == digits:
+                        return {'candidate_id': c['id'], 'candidate_name': c['name'], 'match_type': 'name+phone'}
+        company = (parsed.get('current_company') or '').strip()
+        if company:
+            cand = await db.candidates.find_one({
+                **name_query,
+                'current_company': {'$regex': f'^{re.escape(company)}$', '$options': 'i'},
+            })
+            if cand:
+                return {'candidate_id': cand['id'], 'candidate_name': cand['name'], 'match_type': 'name+company'}
     return None
 
 
