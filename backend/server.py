@@ -25,7 +25,9 @@ import routes_imports
 import routes_calendar
 from reminder_scheduler import reminder_loop
 from snapshot_scheduler import snapshot_loop
+from email_templates import seed_default_templates
 import routes_career
+import routes_career_security
 import routes_analytics
 
 app = FastAPI(title='Pinnacle ATS')
@@ -49,6 +51,7 @@ api_router.include_router(routes_notifications.router)
 api_router.include_router(routes_imports.router)
 api_router.include_router(routes_calendar.router)
 api_router.include_router(routes_career.router)
+api_router.include_router(routes_career_security.router)
 api_router.include_router(routes_analytics.router)
 
 app.include_router(api_router)
@@ -70,6 +73,9 @@ async def startup():
     created = await seed_if_empty()
     if created:
         logger.info('Seeded database (from snapshot or demo data)')
+    inserted = await seed_default_templates()
+    if inserted:
+        logger.info(f'Seeded {inserted} default email template(s)')
     asyncio.create_task(reminder_loop())
     asyncio.create_task(snapshot_loop())
     logger.info('snapshot_loop scheduled — data_seed/snapshot.json will be refreshed every 5 minutes')

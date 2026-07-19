@@ -5,14 +5,17 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
 
 from auth import require_roles
 from database import db
+from email_templates import build_context_from_candidate, send_template
 from fit_scorer import recompute_candidate_fit
+from rate_limiter import enforce as rate_limit
 from resume_parser import extract_text_from_bytes, parse_resume_text
+from routes_career_security import verify_recaptcha_token
 from routes_resumes import _store_file
 from utils import log_activity, new_id, next_candidate_code, notify, now_iso
 
@@ -43,6 +46,24 @@ DEFAULT_SETTINGS = {
     'jobposting_seo_enabled': True,
     'about_text': '',
     'benefits': [],
+    # ---- Phase 5: Custom domain ----
+    'custom_domain': None,
+    'custom_domain_status': None,  # none | pending | verified | failed
+    'custom_domain_verification_token': None,
+    'custom_domain_verified_at': None,
+    # ---- Phase 5: Cookie banner / privacy links ----
+    'cookie_banner_enabled': False,
+    'cookie_banner_text': 'We use essential cookies to make our careers site work. By continuing, you agree to our privacy policy.',
+    'privacy_policy_url': None,
+    'terms_url': None,
+    # ---- Phase 5: reCAPTCHA v3 ----
+    'recaptcha_enabled': False,
+    'recaptcha_site_key': None,
+    'recaptcha_secret_key': None,
+    'recaptcha_min_score': 0.5,
+    # ---- Phase 5: Rate limiting ----
+    'rate_limit_apply_per_hour': 5,
+    'rate_limit_public_per_minute': 60,
 }
 
 # Static content pages exposed under /careers/{key}. Kept as a fixed catalogue so
@@ -542,11 +563,12 @@ async def public_settings():
 
 
 @router.get('/public/jobs')
-async def public_jobs(q: Optional[str] = None, department: Optional[str] = None, location: Optional[str] = None,
+async def public_jobs(request: Request, q: Optional[str] = None, department: Optional[str] = None, location: Optional[str] = None,
                        employment_type: Optional[str] = None, remote_type: Optional[str] = None):
     s = await _get_settings()
     if not s.get('portal_enabled'):
         raise HTTPException(status_code=404, detail='Career portal is not available')
+    rate_limit(request, scope='career_public', limit=int(s.get('rate_limit_public_per_minute', 60) or 0), window_seconds=60)
     query = {'published': True, 'status': 'open'}
     if department and department != 'all':
         query['department'] = department
@@ -567,10 +589,11 @@ async def public_jobs(q: Optional[str] = None, department: Optional[str] = None,
 
 
 @router.get('/public/jobs/{slug}')
-async def public_job_detail(slug: str):
+async def public_job_detail(request: Request, slug: str):
     s = await _get_settings()
     if not s.get('portal_enabled'):
         raise HTTPException(status_code=404, detail='Career portal is not available')
+    rate_limit(request, scope='career_public', limit=int(s.get('rate_limit_public_per_minute', 60) or 0), window_seconds=60)
     job = await db.jobs.find_one({'slug': slug, 'published': True, 'status': 'open'}, {'_id': 0})
     if not job:
         raise HTTPException(status_code=404, detail='Job not found or no longer open')
@@ -579,6 +602,7 @@ async def public_job_detail(slug: str):
 
 @router.post('/public/apply')
 async def apply_to_job(
+    request: Request,
     job_id: str = Form(...),
     first_name: str = Form(...),
     last_name: str = Form(...),
@@ -594,11 +618,22 @@ async def apply_to_job(
     notice_period: Optional[str] = Form(None),
     years_experience: Optional[str] = Form(None),
     cover_letter: Optional[str] = Form(None),
+    recaptcha_token: Optional[str] = Form(None),
     resume: UploadFile = File(...),
 ):
     s = await _get_settings()
     if not s.get('portal_enabled'):
         raise HTTPException(status_code=404, detail='Career portal is not available')
+
+    # Rate limit: per-IP + per-job so a single IP can't spam applications.
+    apply_limit = int(s.get('rate_limit_apply_per_hour', 5) or 0)
+    rate_limit(request, scope='career_apply', limit=apply_limit, window_seconds=3600, extra_key=job_id)
+
+    # reCAPTCHA v3 verification (only if enabled in settings)
+    ok, reason = await verify_recaptcha_token(recaptcha_token, s)
+    if not ok:
+        raise HTTPException(status_code=400, detail=reason)
+
     job = await db.jobs.find_one({'id': job_id, 'published': True, 'status': 'open'})
     if not job:
         raise HTTPException(status_code=404, detail='This role is no longer accepting applications')
@@ -704,5 +739,19 @@ async def apply_to_job(
             await notify(job['recruiter_id'], 'application', f"{name} applied to {job['title']} via Career Portal", f'/candidates/{candidate_id}')
         if job.get('jd_text'):
             await recompute_candidate_fit(candidate_id)
+
+    # Fire "Application received" auto-reply from admin's Gmail (silent no-op if
+    # nobody has connected Google or the template is disabled).
+    try:
+        cand_doc = await db.candidates.find_one({'id': candidate_id}, {'_id': 0})
+        ctx = build_context_from_candidate(cand_doc or {}, job, s)
+        await send_template(
+            template_key='application_received',
+            to_email=email_norm,
+            context=ctx,
+            recruiter_id=job.get('recruiter_id'),
+        )
+    except Exception:
+        pass  # never fail the application because email failed
 
     return {'ok': True, 'message': 'Application submitted successfully', 'candidate_id': candidate_id}

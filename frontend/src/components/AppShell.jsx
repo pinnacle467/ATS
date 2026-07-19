@@ -13,6 +13,7 @@ import {
   Menu,
   Search,
   Settings,
+  Shield,
   UserPlus,
   Users,
 } from 'lucide-react';
@@ -46,6 +47,7 @@ const CAREER_NAV = [
   { to: '/career-portal/content', label: 'Content', icon: FileText, testid: 'sidebar-nav-career-content' },
   { to: '/career-portal/media', label: 'Media Library', icon: ImageIcon, testid: 'sidebar-nav-career-media' },
   { to: '/career-portal/settings', label: 'Settings', icon: Settings, testid: 'sidebar-nav-career-settings' },
+  { to: '/career-portal/security', label: 'Security', icon: Shield, testid: 'sidebar-nav-career-security' },
 ];
 
 const timeAgo = (iso) => {

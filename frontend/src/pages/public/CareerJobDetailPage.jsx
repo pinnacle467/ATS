@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { api, errMsg } from '@/lib/api';
-import { useCareerSettings } from './CareerPublicLayout';
+import { useCareerSettings, useCareerSecurity } from './CareerPublicLayout';
 import { setMeta } from './CareerStaticPage';
 import { track } from './tracking';
 
@@ -23,6 +23,7 @@ export default function CareerJobDetailPage() {
   const { slug } = useParams();
   const navigate = useNavigate();
   const settings = useCareerSettings();
+  const security = useCareerSecurity();
   const [job, setJob] = useState(null);
   const [notFound, setNotFound] = useState(false);
   const [applyOpen, setApplyOpen] = useState(false);
@@ -85,10 +86,22 @@ export default function CareerJobDetailPage() {
     if (!resumeFile) return toast.error('Please attach your resume');
     setSubmitting(true);
     try {
+      // Fetch a reCAPTCHA v3 token if the site key is configured. The Google
+      // script may still be loading — we wait up to ~4s before giving up.
+      let recaptchaToken = '';
+      if (security?.recaptcha_enabled && security?.recaptcha_site_key && window.grecaptcha) {
+        try {
+          await new Promise((resolve) => window.grecaptcha.ready(resolve));
+          recaptchaToken = await window.grecaptcha.execute(security.recaptcha_site_key, { action: 'apply' });
+        } catch (rcErr) {
+          console.warn('reCAPTCHA execute failed', rcErr);
+        }
+      }
       const fd = new FormData();
       fd.append('job_id', job.id);
       Object.entries(form).forEach(([k, v]) => fd.append(k, v));
       fd.append('resume', resumeFile);
+      if (recaptchaToken) fd.append('recaptcha_token', recaptchaToken);
       await api.post('/career/public/apply', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       track('apply_submit', { job_id: job.id });
       setSubmitted(true);

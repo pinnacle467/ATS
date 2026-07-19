@@ -6,6 +6,9 @@ import { track } from './tracking';
 const CareerSettingsContext = createContext(null);
 export const useCareerSettings = () => useContext(CareerSettingsContext);
 
+const CareerSecurityContext = createContext(null);
+export const useCareerSecurity = () => useContext(CareerSecurityContext);
+
 // Small helper — same behavior as CareerStaticPage's setMeta but scoped here
 function setMeta(name, content, isProperty = false) {
   if (!content) return;
@@ -30,6 +33,10 @@ const STATIC_PAGE_NAV = [
 export default function CareerPublicLayout({ children }) {
   const [settings, setSettings] = useState(null);
   const [publishedPages, setPublishedPages] = useState([]);
+  const [security, setSecurity] = useState(null);
+  const [cookieDismissed, setCookieDismissed] = useState(() => {
+    try { return localStorage.getItem('careers_cookie_banner_dismissed') === '1'; } catch { return false; }
+  });
   const [notFound, setNotFound] = useState(false);
   const [loading, setLoading] = useState(true);
   const location = useLocation();
@@ -45,14 +52,35 @@ export default function CareerPublicLayout({ children }) {
     Promise.all([
       api.get('/career/public/settings'),
       api.get('/career/public/pages').catch(() => ({ data: [] })),
+      api.get('/career/public/security-config').catch(() => ({ data: null })),
     ])
-      .then(([s, p]) => {
+      .then(([s, p, sec]) => {
         setSettings(s.data);
         setPublishedPages(p.data || []);
+        setSecurity(sec.data);
       })
       .catch(() => setNotFound(true))
       .finally(() => setLoading(false));
   }, []);
+
+  // Load reCAPTCHA v3 script once when enabled + site key is provided.
+  useEffect(() => {
+    if (!security?.recaptcha_enabled || !security?.recaptcha_site_key) return;
+    if (window.grecaptcha || document.getElementById('recaptcha-v3-script')) return;
+    const s = document.createElement('script');
+    s.id = 'recaptcha-v3-script';
+    s.src = `https://www.google.com/recaptcha/api.js?render=${security.recaptcha_site_key}`;
+    s.async = true;
+    s.defer = true;
+    document.head.appendChild(s);
+    // Expose site key + score fetcher for apply pages
+    window.__ATS_RECAPTCHA_SITE_KEY = security.recaptcha_site_key;
+  }, [security]);
+
+  const dismissCookie = () => {
+    try { localStorage.setItem('careers_cookie_banner_dismissed', '1'); } catch {}
+    setCookieDismissed(true);
+  };
 
   // Inject Google Fonts links + set root-level CSS vars + meta tags whenever settings arrive
   useEffect(() => {
@@ -125,6 +153,7 @@ export default function CareerPublicLayout({ children }) {
 
   return (
     <CareerSettingsContext.Provider value={settings}>
+      <CareerSecurityContext.Provider value={security}>
       <div className="min-h-screen flex flex-col bg-background career-portal-root" style={rootStyle}>
         <header className="border-b border-border sticky top-0 z-20 bg-card/95 backdrop-blur">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
@@ -161,9 +190,48 @@ export default function CareerPublicLayout({ children }) {
         <footer className="border-t border-border py-8 mt-8">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 text-sm text-muted-foreground flex items-center justify-between flex-wrap gap-2">
             <span>© {new Date().getFullYear()} {settings.company_name}</span>
-            <span>Powered by Pinnacle ATS</span>
+            <div className="flex items-center gap-4 flex-wrap">
+              {security?.privacy_policy_url && (
+                <a href={security.privacy_policy_url} target="_blank" rel="noreferrer" className="hover:text-foreground transition-colors" data-testid="career-footer-privacy">Privacy Policy</a>
+              )}
+              {security?.terms_url && (
+                <a href={security.terms_url} target="_blank" rel="noreferrer" className="hover:text-foreground transition-colors" data-testid="career-footer-terms">Terms</a>
+              )}
+              <span>Powered by Pinnacle ATS</span>
+            </div>
           </div>
+          {security?.recaptcha_enabled && (
+            <p className="max-w-6xl mx-auto px-4 sm:px-6 text-[10px] text-muted-foreground mt-2 leading-relaxed">
+              This site is protected by reCAPTCHA and the Google{' '}
+              <a href="https://policies.google.com/privacy" target="_blank" rel="noreferrer" className="underline">Privacy Policy</a> and{' '}
+              <a href="https://policies.google.com/terms" target="_blank" rel="noreferrer" className="underline">Terms of Service</a> apply.
+            </p>
+          )}
         </footer>
+
+        {security?.cookie_banner_enabled && !cookieDismissed && (
+          <div
+            className="fixed bottom-0 left-0 right-0 z-40 bg-card/95 backdrop-blur border-t border-border shadow-lg px-4 sm:px-6 py-3"
+            data-testid="career-cookie-banner"
+          >
+            <div className="max-w-6xl mx-auto flex items-center justify-between gap-4 flex-wrap">
+              <p className="text-sm text-foreground flex-1 min-w-[240px]">
+                {security.cookie_banner_text}{' '}
+                {security.privacy_policy_url && (
+                  <a href={security.privacy_policy_url} target="_blank" rel="noreferrer" className="underline">Read our privacy policy</a>
+                )}
+              </p>
+              <button
+                onClick={dismissCookie}
+                className="text-sm font-medium px-4 py-2 rounded-lg text-white shrink-0"
+                style={{ background: 'var(--brand-primary)' }}
+                data-testid="career-cookie-accept"
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Scoped font override: any element inside .career-portal-root using .font-display
@@ -174,6 +242,7 @@ export default function CareerPublicLayout({ children }) {
       {settings.primary_color && (
         <style>{`.career-portal-root .text-primary { color: ${settings.primary_color}; } .career-portal-root .bg-primary { background-color: ${settings.primary_color}; } .career-portal-root .hover\\:text-primary:hover { color: ${settings.primary_color}; }`}</style>
       )}
+    </CareerSecurityContext.Provider>
     </CareerSettingsContext.Provider>
   );
 }

@@ -16,6 +16,7 @@ import AdminPage from '@/pages/AdminPage';
 import CareerDashboardPage from '@/pages/career/CareerDashboardPage';
 import CareerJobsPage from '@/pages/career/CareerJobsPage';
 import CareerSettingsPage from '@/pages/career/CareerSettingsPage';
+import CareerSecurityPage from '@/pages/career/CareerSecurityPage';
 import CareerContentPage from '@/pages/career/CareerContentPage';
 import CareerMediaPage from '@/pages/career/CareerMediaPage';
 import CareerAnalyticsPage from '@/pages/career/CareerAnalyticsPage';
@@ -56,6 +57,7 @@ function App() {
           <Route path="/career-portal" element={<Protected roles={['admin', 'recruiter']}><CareerDashboardPage /></Protected>} />
           <Route path="/career-portal/jobs" element={<Protected roles={['admin', 'recruiter']}><CareerJobsPage /></Protected>} />
           <Route path="/career-portal/settings" element={<Protected roles={['admin', 'recruiter']}><CareerSettingsPage /></Protected>} />
+          <Route path="/career-portal/security" element={<Protected roles={['admin', 'recruiter']}><CareerSecurityPage /></Protected>} />
           <Route path="/career-portal/content" element={<Protected roles={['admin', 'recruiter']}><CareerContentPage /></Protected>} />
           <Route path="/career-portal/media" element={<Protected roles={['admin', 'recruiter']}><CareerMediaPage /></Protected>} />
           <Route path="/career-portal/analytics" element={<Protected roles={['admin', 'recruiter']}><CareerAnalyticsPage /></Protected>} />
