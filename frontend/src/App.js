@@ -26,6 +26,23 @@ import CareerJobsListPage from '@/pages/public/CareerJobsListPage';
 import CareerJobDetailPage from '@/pages/public/CareerJobDetailPage';
 import CareerStaticPage from '@/pages/public/CareerStaticPage';
 
+// Role hierarchy alias map — mirrors backend/permissions.py ROLE_ALIASES so
+// super_admin passes any 'admin'/'recruiter' check, and interview_panel passes
+// any legacy 'interviewer' check. Prevents redirect loops after RBAC migration.
+const ROLE_ALIASES = {
+  super_admin: ['super_admin', 'admin', 'recruiter'],
+  admin: ['admin', 'recruiter'],
+  interview_panel: ['interview_panel', 'interviewer'],
+  vendor: ['vendor'],
+  recruiter: ['recruiter', 'admin'],
+  interviewer: ['interviewer', 'interview_panel'],
+};
+
+function roleSatisfies(userRole, requiredRoles) {
+  const aliases = ROLE_ALIASES[userRole] || [userRole];
+  return requiredRoles.some((r) => aliases.includes(r));
+}
+
 const Protected = ({ children, roles }) => {
   const { user, loading } = useAuth();
   if (loading)
@@ -35,7 +52,7 @@ const Protected = ({ children, roles }) => {
       </div>
     );
   if (!user) return <Navigate to="/login" replace />;
-  if (roles && !roles.includes(user.role)) return <Navigate to="/" replace />;
+  if (roles && !roleSatisfies(user.role, roles)) return <Navigate to="/" replace />;
   return <AppShell>{children}</AppShell>;
 };
 

@@ -89,7 +89,22 @@ export default function AppShell({ children }) {
     .join('')
     .toUpperCase();
 
-  const navItems = NAV.filter((n) => !n.roles || n.roles.includes(user?.role));
+// Role alias table — mirror of backend/permissions.py, so super_admin
+// automatically satisfies nav items that require 'admin'/'recruiter'.
+const NAV_ROLE_ALIASES = {
+  super_admin: ['super_admin', 'admin', 'recruiter'],
+  admin: ['admin', 'recruiter'],
+  interview_panel: ['interview_panel', 'interviewer'],
+  vendor: ['vendor'],
+  recruiter: ['recruiter', 'admin'],
+  interviewer: ['interviewer', 'interview_panel'],
+};
+function roleSatisfiesNav(userRole, requiredRoles) {
+  const aliases = NAV_ROLE_ALIASES[userRole] || [userRole];
+  return requiredRoles.some((r) => aliases.includes(r));
+}
+
+  const navItems = NAV.filter((n) => !n.roles || roleSatisfiesNav(user?.role, n.roles));
 
   return (
     <div className="min-h-screen bg-background">
