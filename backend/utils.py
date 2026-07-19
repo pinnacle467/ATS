@@ -79,3 +79,17 @@ async def next_candidate_code() -> str:
     )
     seq = doc['seq'] if doc else 1
     return f'CAND-{seq:04d}'
+
+
+async def next_job_code() -> str:
+    """Atomically issue the next human-readable job ID, e.g. JOB-001.
+    Uses a MongoDB counter doc `job_seq` so codes are globally monotonic even
+    if two admins create jobs concurrently."""
+    doc = await db.counters.find_one_and_update(
+        {'_id': 'job_seq'},
+        {'$inc': {'seq': 1}},
+        upsert=True,
+        return_document=ReturnDocument.AFTER,
+    )
+    seq = doc['seq'] if doc else 1
+    return f'JOB-{seq:03d}'

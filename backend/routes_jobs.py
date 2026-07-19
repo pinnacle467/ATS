@@ -9,7 +9,7 @@ from auth import get_current_user, require_roles
 from database import db
 from fit_scorer import recompute_job_candidates_fit
 from resume_parser import extract_text_from_bytes
-from utils import clean, log_activity, log_audit, new_id, now_iso, slugify
+from utils import clean, log_activity, log_audit, new_id, next_job_code, now_iso, slugify
 
 router = APIRouter(prefix='/jobs', tags=['jobs'])
 
@@ -85,6 +85,7 @@ async def create_job(body: JobCreate, user: dict = Depends(require_roles('admin'
     default_stages = [s['name'] for s in settings['stages']] if settings else DEFAULT_STAGES
     job = {
         'id': new_id(),
+        'job_code': await next_job_code(),
         'slug': await _unique_slug(body.title),
         'title': body.title,
         'department': body.department,

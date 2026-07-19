@@ -87,7 +87,7 @@ def _norm_phone(p: Optional[str]) -> Optional[str]:
 
 def _public_job(job: dict) -> dict:
     return {
-        'id': job['id'], 'slug': job.get('slug'), 'title': job['title'], 'department': job.get('department'),
+        'id': job['id'], 'job_code': job.get('job_code'), 'slug': job.get('slug'), 'title': job['title'], 'department': job.get('department'),
         'location': job.get('location'), 'employment_type': job.get('employment_type'),
         'experience_level': job.get('experience_level'), 'remote_type': job.get('remote_type'),
         'description': job.get('description'), 'jd_text': job.get('jd_text'),

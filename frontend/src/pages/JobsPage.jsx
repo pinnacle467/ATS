@@ -171,7 +171,14 @@ export default function JobsPage() {
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-start gap-1.5">
                   <div>
-                    <div className="font-display font-semibold">{j.title}</div>
+                    <div className="font-display font-semibold flex items-center gap-2">
+                      {j.title}
+                      {j.job_code && (
+                        <span className="text-[10px] font-mono font-normal text-muted-foreground bg-secondary rounded px-1.5 py-0.5" data-testid={`job-code-${j.id}`}>
+                          {j.job_code}
+                        </span>
+                      )}
+                    </div>
                     <div className="text-xs text-muted-foreground">{j.department}</div>
                   </div>
                   <JdIndicator hasJd={j.has_jd} />

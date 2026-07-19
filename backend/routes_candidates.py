@@ -124,11 +124,13 @@ async def list_candidates(
     query.update(vis)
     total = await db.candidates.count_documents(query)
     items = await db.candidates.find(query, {'_id': 0}).sort(sort, order).skip((page - 1) * limit).to_list(limit)
-    # enrich with job title + recruiter name
-    jobs = {j['id']: j for j in await db.jobs.find({}, {'_id': 0, 'id': 1, 'title': 1}).to_list(500)}
+    # enrich with job title + code + recruiter name
+    jobs = {j['id']: j for j in await db.jobs.find({}, {'_id': 0, 'id': 1, 'title': 1, 'job_code': 1}).to_list(500)}
     users = {u['id']: u for u in await db.users.find({}, {'_id': 0, 'id': 1, 'name': 1}).to_list(500)}
     for c in items:
-        c['job_title'] = jobs.get(c.get('job_id'), {}).get('title')
+        job = jobs.get(c.get('job_id'), {})
+        c['job_title'] = job.get('title')
+        c['job_code'] = job.get('job_code')
         c['recruiter_name'] = users.get(c.get('recruiter_id'), {}).get('name')
     return {'items': items, 'total': total, 'page': page, 'limit': limit}
 

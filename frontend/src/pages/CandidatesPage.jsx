@@ -426,7 +426,10 @@ export default function CandidatesPage() {
                     <div className="text-xs text-muted-foreground">{c.email || 'no email'}</div>
                   </TableCell>
                   <TableCell className="hidden sm:table-cell text-xs font-mono text-muted-foreground" data-testid={`candidate-code-${c.id}`}>{c.candidate_code || '—'}</TableCell>
-                  <TableCell className="text-sm">{c.job_title || '—'}</TableCell>
+                  <TableCell className="text-sm">
+                    {c.job_title || '—'}
+                    {c.job_code && <span className="ml-1.5 text-[10px] font-mono text-muted-foreground bg-secondary rounded px-1 py-0.5" data-testid={`candidate-job-code-${c.id}`}>{c.job_code}</span>}
+                  </TableCell>
                   <TableCell data-testid={`candidate-fit-cell-${c.id}`}>
                     <FitBadge score={c.fit_score} summary={c.fit_score_summary} />
                   </TableCell>
