@@ -75,7 +75,8 @@ class InterviewCreate(BaseModel):
     stage: Optional[str] = None
     type: str = 'phone_screen'  # phone_screen | technical | panel | onsite
     interviewer_ids: list[str]
-    scheduled_at: str  # ISO datetime
+    scheduled_at: str  # ISO datetime (UTC)
+    timezone: Optional[str] = None  # IANA tz name, e.g. 'America/New_York'
     duration_min: int = 60
     location: Optional[str] = None
     video_link: Optional[str] = None
@@ -87,6 +88,7 @@ class InterviewUpdate(BaseModel):
     type: Optional[str] = None
     interviewer_ids: Optional[list[str]] = None
     scheduled_at: Optional[str] = None
+    timezone: Optional[str] = None
     duration_min: Optional[int] = None
     location: Optional[str] = None
     video_link: Optional[str] = None
@@ -108,13 +110,21 @@ class AvailabilitySlot(BaseModel):
 
 
 async def _enrich(interviews: list) -> list:
-    cands = {c['id']: c for c in await db.candidates.find({}, {'_id': 0, 'id': 1, 'name': 1, 'job_id': 1}).to_list(3000)}
+    cands = {c['id']: c for c in await db.candidates.find({}, {'_id': 0, 'id': 1, 'name': 1, 'job_id': 1, 'email': 1, 'current_title': 1}).to_list(3000)}
     jobs = {j['id']: j for j in await db.jobs.find({}, {'_id': 0, 'id': 1, 'title': 1}).to_list(500)}
-    users = {u['id']: u for u in await db.users.find({}, {'_id': 0, 'id': 1, 'name': 1}).to_list(500)}
+    users = {u['id']: u for u in await db.users.find({}, {'_id': 0, 'id': 1, 'name': 1, 'email': 1}).to_list(500)}
     for iv in interviews:
-        iv['candidate_name'] = cands.get(iv.get('candidate_id'), {}).get('name', 'Unknown')
-        iv['job_title'] = jobs.get(iv.get('job_id'), {}).get('title')
-        iv['interviewer_names'] = [users.get(i, {}).get('name', '?') for i in iv.get('interviewer_ids', [])]
+        c = cands.get(iv.get('candidate_id'), {})
+        iv['candidate_name'] = c.get('name', 'Unknown')
+        iv['candidate_email'] = c.get('email')
+        iv['candidate_title'] = c.get('current_title')
+        iv['job_title'] = jobs.get(iv.get('job_id') or c.get('job_id'), {}).get('title')
+        iv['interviewers'] = [
+            {'id': i, 'name': users.get(i, {}).get('name', '?'), 'email': users.get(i, {}).get('email')}
+            for i in iv.get('interviewer_ids', [])
+        ]
+        iv['interviewer_names'] = [x['name'] for x in iv['interviewers']]
+        iv.setdefault('timezone', 'UTC')
         sc = await db.scorecards.find({'interview_id': iv['id']}, {'_id': 0}).to_list(20)
         iv['scorecards_submitted'] = len(sc)
     return interviews
@@ -165,6 +175,7 @@ async def create_interview(body: InterviewCreate, user: dict = Depends(require_r
         'type': body.type,
         'interviewer_ids': body.interviewer_ids,
         'scheduled_at': body.scheduled_at,
+        'timezone': body.timezone or 'UTC',
         'duration_min': body.duration_min,
         'location': body.location,
         'video_link': body.video_link,
