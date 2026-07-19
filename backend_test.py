@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 
 # Public endpoint from frontend/.env
-BASE_URL = "https://4c41e85e-3b6c-42c0-b96d-f8ad30f6a3c7.preview.emergentagent.com/api"
+BASE_URL = "https://ats-data-bridge.preview.emergentagent.com/api"
 
 # Test credentials from /app/memory/test_credentials.md
 CREDENTIALS = {
