@@ -20,7 +20,7 @@ from email_templates import (
     send_custom,
     send_template,
 )
-from utils import clean, log_audit, new_id, now_iso
+from utils import clean, log_activity, log_audit, new_id, now_iso
 
 router = APIRouter(prefix='/career', tags=['career-security'])
 
@@ -344,15 +344,14 @@ async def send_emails_to_candidates(body: dict, user: dict = Depends(require_rol
                             f"Sent email to {cand.get('email')}" + (f" (template: {template['key']})" if template else ' (custom)'))
             # Also append an activity so it shows up in the timeline
             try:
-                await db.activities.insert_one({
-                    'id': new_id(),
-                    'candidate_id': cid,
-                    'actor_id': user.get('id'),
-                    'actor_name': user.get('name'),
-                    'action': 'email_sent',
-                    'details': f"Sent email: {template['name'] if template else 'Custom'} — subject: {(subject_in or (template['subject'] if template else ''))[:120]}",
-                    'created_at': now_iso(),
-                })
+                template_label = template['name'] if template else 'Custom email'
+                subject_preview = (subject_in or (template['subject'] if template else ''))[:120]
+                await log_activity(
+                    user,
+                    'email_sent',
+                    f'Sent "{template_label}" — {subject_preview}',
+                    candidate_id=cid,
+                )
             except Exception:
                 pass
         else:

@@ -395,13 +395,23 @@ async def delete_candidate(candidate_id: str, user: dict = Depends(require_roles
 
 @router.post('/{candidate_id}/notes')
 async def add_note(candidate_id: str, body: NoteCreate, user: dict = Depends(get_current_user)):
-    if user['role'] == 'interviewer':
+    # Legacy interviewer
+    if user.get('role') == 'interviewer':
         allowed = await interviewer_candidate_ids(user['id'])
         if candidate_id not in allowed:
             raise HTTPException(status_code=403, detail='Not authorized')
     c = await db.candidates.find_one({'id': candidate_id})
     if not c:
         raise HTTPException(status_code=404, detail='Candidate not found')
+    # Interview Panel — must have visibility to this candidate via job team
+    if is_interview_panel(user):
+        allowed_jobs = await visible_job_ids_for_user(db, user)
+        if c.get('job_id') not in allowed_jobs:
+            raise HTTPException(status_code=403, detail='Not authorized')
+    # Vendor — only their own candidates
+    if is_vendor(user):
+        if c.get('submitted_by') != user.get('id'):
+            raise HTTPException(status_code=403, detail='Not authorized')
     note = {'id': new_id(), 'candidate_id': candidate_id, 'author_id': user['id'], 'author_name': user['name'],
             'text': body.text, 'note_type': body.note_type, 'created_at': now_iso()}
     await db.notes.insert_one(note)
@@ -442,12 +452,37 @@ async def merge_resume(candidate_id: str, body: MergeResume, background_tasks: B
 
 @router.get('/{candidate_id}/timeline')
 async def timeline(candidate_id: str, user: dict = Depends(get_current_user)):
-    if user['role'] == 'interviewer':
+    # Access check: same as get_candidate
+    if user.get('role') == 'interviewer':
         allowed = await interviewer_candidate_ids(user['id'])
         if candidate_id not in allowed:
             raise HTTPException(status_code=403, detail='Not authorized')
+    elif is_interview_panel(user):
+        # New interview_panel: allowed if candidate's job is in their team
+        c = await db.candidates.find_one({'id': candidate_id}, {'_id': 0, 'job_id': 1})
+        allowed_jobs = await visible_job_ids_for_user(db, user)
+        if not c or c.get('job_id') not in allowed_jobs:
+            raise HTTPException(status_code=403, detail='Not authorized')
+    elif is_vendor(user):
+        c = await db.candidates.find_one({'id': candidate_id}, {'_id': 0, 'submitted_by': 1})
+        if not c or c.get('submitted_by') != user.get('id'):
+            raise HTTPException(status_code=403, detail='Not authorized')
+
     notes = await db.notes.find({'candidate_id': candidate_id}, {'_id': 0}).to_list(500)
     acts = await db.activities.find({'candidate_id': candidate_id}, {'_id': 0}).to_list(500)
+
+    # Interview Panel — hide recruiter-internal notes and activities.
+    # They can only see: their own notes, and activities that are candidate-lifecycle
+    # (application, stage_change, interview_scheduled, feedback_submitted, resume_merged, hired).
+    # Anything email/note-related from OTHER users is hidden.
+    if is_interview_panel(user) or user.get('role') == 'interviewer':
+        my_id = user.get('id')
+        notes = [n for n in notes if n.get('author_id') == my_id]
+        INTERNAL_ACTIVITY_TYPES = {'note', 'email_log', 'email_sent'}
+        acts = [
+            a for a in acts
+            if a.get('type') not in INTERNAL_ACTIVITY_TYPES or a.get('actor_id') == my_id
+        ]
     events = [{'kind': 'note', **n} for n in notes] + [{'kind': 'activity', **a} for a in acts]
     events.sort(key=lambda e: e.get('created_at', ''), reverse=True)
     return events

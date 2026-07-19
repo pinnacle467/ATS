@@ -9,6 +9,7 @@ from auth import get_current_user, require_roles
 from database import db
 from google_calendar import create_event, delete_event, free_busy, get_credentials_for_user, update_event
 from feedback_emails import send_scorecard_request
+from permissions import is_admin_or_higher, is_interview_panel, is_vendor
 from utils import clean, log_activity, log_audit, new_id, notify, now_iso
 
 router = APIRouter(tags=['interviews'])
@@ -274,7 +275,7 @@ async def submit_scorecard(interview_id: str, body: ScorecardSubmit, user: dict 
     iv = await db.interviews.find_one({'id': interview_id})
     if not iv:
         raise HTTPException(status_code=404, detail='Interview not found')
-    if user['id'] not in iv.get('interviewer_ids', []) and user['role'] != 'admin':
+    if user['id'] not in iv.get('interviewer_ids', []) and not is_admin_or_higher(user):
         raise HTTPException(status_code=403, detail='Only assigned interviewers can submit a scorecard')
     existing = await db.scorecards.find_one({'interview_id': interview_id, 'interviewer_id': user['id']})
     if existing:
@@ -310,14 +311,34 @@ async def get_scorecards(interview_id: str, user: dict = Depends(get_current_use
     iv = await db.interviews.find_one({'id': interview_id})
     if not iv:
         raise HTTPException(status_code=404, detail='Interview not found')
-    if user['role'] == 'interviewer' and user['id'] not in iv.get('interviewer_ids', []):
+    # Interviewer / interview_panel: must be assigned to this interview
+    if (user.get('role') == 'interviewer' or is_interview_panel(user)) and user['id'] not in iv.get('interviewer_ids', []):
         raise HTTPException(status_code=403, detail='Not authorized')
-    return clean(await db.scorecards.find({'interview_id': interview_id}, {'_id': 0}).to_list(50))
+    all_cards = await db.scorecards.find({'interview_id': interview_id}, {'_id': 0}).to_list(50)
+    # Interview panel/interviewer: only see their own scorecard until they've submitted
+    if user.get('role') == 'interviewer' or is_interview_panel(user):
+        submitted_my_own = any(sc.get('interviewer_id') == user['id'] for sc in all_cards)
+        if not submitted_my_own:
+            all_cards = [sc for sc in all_cards if sc.get('interviewer_id') == user['id']]
+    return clean(all_cards)
 
 
 @router.get('/candidates/{candidate_id}/scorecards')
 async def candidate_scorecards(candidate_id: str, user: dict = Depends(get_current_user)):
     scs = await db.scorecards.find({'candidate_id': candidate_id}, {'_id': 0}).sort('submitted_at', -1).to_list(100)
+    # Interview panel/interviewer: for each interview_id, only see other people's scorecards
+    # AFTER they've submitted their own for that interview.
+    if user.get('role') == 'interviewer' or is_interview_panel(user):
+        my_id = user['id']
+        # Group by interview
+        interviews_where_i_submitted = {sc['interview_id'] for sc in scs if sc.get('interviewer_id') == my_id}
+        scs = [
+            sc for sc in scs
+            if sc.get('interviewer_id') == my_id or sc.get('interview_id') in interviews_where_i_submitted
+        ]
+    # Vendors cannot see any scorecards
+    if is_vendor(user):
+        return []
     return scs
 
 
@@ -331,7 +352,7 @@ async def get_availability(user_id: str, user: dict = Depends(get_current_user))
 @router.post('/availability')
 async def add_availability(body: AvailabilitySlot, user: dict = Depends(get_current_user)):
     target = body.user_id or user['id']
-    if target != user['id'] and user['role'] != 'admin':
+    if target != user['id'] and not is_admin_or_higher(user):
         raise HTTPException(status_code=403, detail='Cannot set availability for others')
     slot = {'id': new_id(), 'user_id': target, 'day_of_week': body.day_of_week,
             'start_time': body.start_time, 'end_time': body.end_time, 'created_at': now_iso()}
