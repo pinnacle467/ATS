@@ -21,6 +21,8 @@ export const SOURCES = [
   { value: 'job_board', label: 'Job Board' },
   { value: 'career_site', label: 'Career Site' },
   { value: 'linkedin', label: 'LinkedIn' },
+  { value: 'vendor', label: 'Agency / Vendor' },
+  { value: 'other', label: 'Other' },
 ];
 
 const STAGE_BADGE = {
@@ -197,7 +199,8 @@ export default function CandidatesPage() {
     if (action === 'move_stage') body.stage = bulkValue;
     if (action === 'tag') body.tag = bulkValue;
     if (action === 'assign') body.recruiter_id = bulkValue;
-    if ((action === 'move_stage' || action === 'tag' || action === 'assign') && !bulkValue) {
+    if (action === 'change_source') body.source = bulkValue;
+    if ((action === 'move_stage' || action === 'tag' || action === 'assign' || action === 'change_source') && !bulkValue) {
       toast.error('Please choose a value');
       return;
     }
@@ -366,6 +369,7 @@ export default function CandidatesPage() {
             <Button size="sm" variant="outline" className="bg-card" onClick={() => setBulkDialog('move_stage')} data-testid="bulk-move-stage-button">Move Stage</Button>
             <Button size="sm" variant="outline" className="bg-card" onClick={() => setBulkDialog('tag')} data-testid="bulk-tag-button">Tag</Button>
             <Button size="sm" variant="outline" className="bg-card" onClick={() => setBulkDialog('assign')} data-testid="bulk-assign-button">Assign</Button>
+            <Button size="sm" variant="outline" className="bg-card" onClick={() => setBulkDialog('change_source')} data-testid="bulk-change-source-button">Change Source</Button>
             <Button size="sm" variant="destructive" onClick={() => { setBulkRejectCategory(''); setBulkReason(''); setBulkDialog('reject'); }} data-testid="bulk-reject-button">Reject</Button>
             {['super_admin', 'admin'].includes(user?.role) && (
               <Button size="sm" variant="destructive" onClick={() => setBulkDialog('delete')} data-testid="bulk-delete-button">Delete</Button>
@@ -475,6 +479,7 @@ export default function CandidatesPage() {
               {bulkDialog === 'reject' && `Reject ${selected.length} candidates`}
               {bulkDialog === 'tag' && `Tag ${selected.length} candidates`}
               {bulkDialog === 'assign' && `Assign ${selected.length} candidates`}
+              {bulkDialog === 'change_source' && `Change source of ${selected.length} candidate${selected.length === 1 ? '' : 's'}`}
               {bulkDialog === 'delete' && `Delete ${selected.length} candidate${selected.length === 1 ? '' : 's'}?`}
             </DialogTitle>
           </DialogHeader>
@@ -496,6 +501,16 @@ export default function CandidatesPage() {
                 <SelectTrigger data-testid="bulk-recruiter-select"><SelectValue placeholder="Choose recruiter" /></SelectTrigger>
                 <SelectContent>{recruiters.map((r) => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}</SelectContent>
               </Select>
+            )}
+            {bulkDialog === 'change_source' && (
+              <div className="space-y-1.5">
+                <Label>New source</Label>
+                <Select value={bulkValue} onValueChange={setBulkValue}>
+                  <SelectTrigger data-testid="bulk-source-select"><SelectValue placeholder="Choose source" /></SelectTrigger>
+                  <SelectContent>{SOURCES.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">This will overwrite the current source of all selected candidates.</p>
+              </div>
             )}
             {bulkDialog === 'reject' && (
               <div className="space-y-3">

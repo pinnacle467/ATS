@@ -28,7 +28,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
-import { StageBadge, REJECTION_REASONS } from '@/pages/CandidatesPage';
+import { StageBadge, REJECTION_REASONS, SOURCES } from '@/pages/CandidatesPage';
 import ChangeLog from '@/components/ChangeLog';
 import SendEmailDialog from '@/components/SendEmailDialog';
 import { useAuth } from '@/context/AuthContext';
@@ -196,6 +196,17 @@ export default function CandidateProfilePage() {
     }
   };
 
+  const changeSource = async (newSource) => {
+    if (!newSource || newSource === cand.source) return;
+    try {
+      await api.put(`/candidates/${id}`, { source: newSource });
+      toast.success(`Source updated to ${(SOURCES.find((s) => s.value === newSource)?.label) || newSource}`);
+      load();
+    } catch (e) {
+      toast.error(errMsg(e, 'Failed to update source'));
+    }
+  };
+
   const changeJob = async (newJobId) => {
     if (!newJobId || newJobId === cand.job_id) return;
     try {
@@ -284,7 +295,7 @@ export default function CandidateProfilePage() {
               )}
             </div>
             <p className="text-sm text-muted-foreground mt-0.5">
-              {cand.current_title || 'No title'}{cand.current_company ? ` at ${cand.current_company}` : ''} · applied {cand.applied_at ? new Date(cand.applied_at).toLocaleDateString() : '—'} · source: {(cand.source || '').replace('_', ' ')}
+              {cand.current_title || 'No title'}{cand.current_company ? ` at ${cand.current_company}` : ''} · applied {cand.applied_at ? new Date(cand.applied_at).toLocaleDateString() : '—'}
             </p>
           </div>
         </div>
@@ -300,6 +311,16 @@ export default function CandidateProfilePage() {
             >
               <Mail className="h-4 w-4 mr-1.5" /> Send Email
             </Button>
+          )}
+          {isRecruiter && (
+            <Select value={cand.source || ''} onValueChange={changeSource}>
+              <SelectTrigger className="w-[160px]" data-testid="candidate-source-select" title="Change source">
+                <SelectValue placeholder="Source">
+                  {SOURCES.find((s) => s.value === cand.source)?.label || (cand.source ? cand.source.replace('_', ' ') : 'Set source')}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>{SOURCES.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
+            </Select>
           )}
           {isRecruiter && (
             <Select value={cand.stage} onValueChange={onStageChange}>

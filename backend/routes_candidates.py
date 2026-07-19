@@ -72,11 +72,12 @@ class NoteCreate(BaseModel):
 
 class BulkAction(BaseModel):
     candidate_ids: list[str]
-    action: str  # move_stage | reject | tag | assign | delete
+    action: str  # move_stage | reject | tag | assign | change_source | delete
     stage: Optional[str] = None
     reason: Optional[str] = None
     tag: Optional[str] = None
     recruiter_id: Optional[str] = None
+    source: Optional[str] = None
 
 
 async def _visible_query(user: dict) -> dict:
@@ -373,6 +374,11 @@ async def bulk_action(body: BulkAction, user: dict = Depends(require_roles('admi
         elif body.action == 'assign' and body.recruiter_id:
             await db.candidates.update_one({'id': cid}, {'$set': {'recruiter_id': body.recruiter_id, 'updated_at': now_iso()}})
             await notify(body.recruiter_id, 'assignment', f"Candidate {c['name']} was assigned to you", f'/candidates/{cid}')
+        elif body.action == 'change_source' and body.source:
+            old_source = c.get('source') or '(empty)'
+            await db.candidates.update_one({'id': cid}, {'$set': {'source': body.source, 'updated_at': now_iso()}})
+            await log_activity(user, 'source_changed', f"changed source of {c['name']} from {old_source} to {body.source}", candidate_id=cid)
+            await log_audit(user, 'source_changed', 'candidate', cid, f'source: {old_source} → {body.source}')
         elif body.action == 'delete':
             await db.candidates.delete_one({'id': cid})
             await db.notes.delete_many({'candidate_id': cid})
