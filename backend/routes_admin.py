@@ -5,16 +5,20 @@ from pydantic import BaseModel, EmailStr
 
 from auth import get_current_user, hash_password, require_roles
 from database import db
+from permissions import ALL_ROLES, ROLE_ADMIN, ROLE_SUPER_ADMIN, can_manage_role, is_super_admin
 from utils import clean, log_audit, new_id, now_iso
 
 router = APIRouter(tags=['admin'])
+
+
+VALID_ROLES = set(ALL_ROLES) | {'recruiter', 'interviewer'}  # legacy accepted for safety
 
 
 class UserCreate(BaseModel):
     name: str
     email: EmailStr
     password: str
-    role: str  # admin | recruiter | interviewer
+    role: str  # super_admin | admin | interview_panel | vendor (legacy: recruiter, interviewer)
     title: Optional[str] = None
 
 
@@ -35,8 +39,11 @@ async def list_users(user: dict = Depends(get_current_user)):
 
 @router.post('/users')
 async def create_user(body: UserCreate, user: dict = Depends(require_roles('admin'))):
-    if body.role not in ('admin', 'recruiter', 'interviewer'):
-        raise HTTPException(status_code=422, detail='Invalid role')
+    if body.role not in VALID_ROLES:
+        raise HTTPException(status_code=422, detail=f'Invalid role. Must be one of: {", ".join(ALL_ROLES)}')
+    # Only super_admin can create another super_admin
+    if not can_manage_role(user.get('role', ''), body.role):
+        raise HTTPException(status_code=403, detail=f'You do not have permission to create a user with role "{body.role}"')
     existing = await db.users.find_one({'email': body.email.lower()})
     if existing:
         raise HTTPException(status_code=409, detail='A user with this email already exists')
@@ -61,11 +68,17 @@ async def update_user(user_id: str, body: UserUpdate, user: dict = Depends(requi
     target = await db.users.find_one({'id': user_id})
     if not target:
         raise HTTPException(status_code=404, detail='User not found')
+    # Guard: only super_admin can edit another super_admin (or a user being promoted TO super_admin)
+    if not can_manage_role(user.get('role', ''), target.get('role', '')):
+        raise HTTPException(status_code=403, detail='You do not have permission to modify this user')
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
     if 'password' in updates:
         updates['password_hash'] = hash_password(updates.pop('password'))
-    if 'role' in updates and updates['role'] not in ('admin', 'recruiter', 'interviewer'):
-        raise HTTPException(status_code=422, detail='Invalid role')
+    if 'role' in updates:
+        if updates['role'] not in VALID_ROLES:
+            raise HTTPException(status_code=422, detail=f'Invalid role. Must be one of: {", ".join(ALL_ROLES)}')
+        if not can_manage_role(user.get('role', ''), updates['role']):
+            raise HTTPException(status_code=403, detail=f'You do not have permission to assign role "{updates["role"]}"')
     await db.users.update_one({'id': user_id}, {'$set': updates})
     detail_keys = ', '.join(k for k in updates.keys() if k != 'password_hash')
     if 'role' in updates:
@@ -84,6 +97,8 @@ async def delete_user(user_id: str, user: dict = Depends(require_roles('admin'))
     target = await db.users.find_one({'id': user_id})
     if not target:
         raise HTTPException(status_code=404, detail='User not found')
+    if not can_manage_role(user.get('role', ''), target.get('role', '')):
+        raise HTTPException(status_code=403, detail='You do not have permission to delete this user')
     await db.users.delete_one({'id': user_id})
     await log_audit(user, 'user_deleted', 'user', user_id, target.get('email', ''))
     return {'ok': True}

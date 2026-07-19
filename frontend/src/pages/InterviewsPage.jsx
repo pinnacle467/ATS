@@ -72,7 +72,7 @@ export default function InterviewsPage() {
   const [calStatus, setCalStatus] = useState(null);
   const [calBusy, setCalBusy] = useState(false);
 
-  const isRecruiter = user?.role === 'admin' || user?.role === 'recruiter';
+  const isRecruiter = ['super_admin', 'admin', 'recruiter'].includes(user?.role);
 
   useEffect(() => { localStorage.setItem('interviews_display_tz', displayTz); }, [displayTz]);
 
@@ -657,7 +657,7 @@ export default function InterviewsPage() {
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="font-display text-2xl font-semibold tracking-tight">Interviews</h1>
-          <p className="text-sm text-muted-foreground">{user?.role === 'interviewer' ? 'Your assigned interviews' : 'All scheduled interviews'}</p>
+          <p className="text-sm text-muted-foreground">{['interview_panel', 'interviewer'].includes(user?.role) ? 'Your assigned interviews' : 'All scheduled interviews'}</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {/* Timezone switcher */}

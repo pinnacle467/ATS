@@ -55,8 +55,14 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 
 
 def require_roles(*roles):
+    """Check that user's role satisfies at least one of the required role names.
+    Uses the ROLE_ALIASES mapping so legacy role names still work and super_admin
+    passes any check that admin or recruiter would pass.
+    """
+    from permissions import role_satisfies
+
     async def checker(user: dict = Depends(get_current_user)) -> dict:
-        if user.get('role') not in roles:
+        if not role_satisfies(user.get('role', ''), roles):
             raise HTTPException(status_code=403, detail='Insufficient permissions')
         return user
     return checker

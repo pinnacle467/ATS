@@ -203,7 +203,7 @@ export default function JobsPage() {
                 {j.status === 'open' && <Button size="sm" variant="ghost" onClick={() => setStatus(j, 'on_hold')}>Hold</Button>}
                 {j.status !== 'closed' && <Button size="sm" variant="ghost" onClick={() => setStatus(j, 'closed')}>Close</Button>}
                 {j.status !== 'open' && <Button size="sm" variant="ghost" onClick={() => setStatus(j, 'open')}>Reopen</Button>}
-                {user?.role === 'admin' && (
+                {['super_admin', 'admin'].includes(user?.role) && (
                   <Button
                     size="sm"
                     variant="ghost"

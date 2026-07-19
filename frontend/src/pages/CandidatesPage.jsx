@@ -110,7 +110,7 @@ export default function CandidatesPage() {
   const [kanbanRejectDetail, setKanbanRejectDetail] = useState('');
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
 
-  const isRecruiter = user?.role === 'admin' || user?.role === 'recruiter';
+  const isRecruiter = ['super_admin', 'admin', 'recruiter'].includes(user?.role);
   const limit = view === 'kanban' ? 500 : 25;
 
   useEffect(() => {
@@ -248,14 +248,14 @@ export default function CandidatesPage() {
 
   const totalPages = Math.max(1, Math.ceil(data.total / limit));
 
-  const recruiters = useMemo(() => users.filter((u) => u.role === 'recruiter' || u.role === 'admin'), [users]);
+  const recruiters = useMemo(() => users.filter((u) => ['super_admin', 'admin', 'recruiter'].includes(u.role)), [users]);
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="font-display text-2xl font-semibold tracking-tight">Candidates</h1>
-          <p className="text-sm text-muted-foreground">{data.total} candidate{data.total === 1 ? '' : 's'} {user?.role === 'interviewer' ? 'assigned to you' : 'in pipeline'}</p>
+          <p className="text-sm text-muted-foreground">{data.total} candidate{data.total === 1 ? '' : 's'} {['interview_panel', 'interviewer'].includes(user?.role) ? 'assigned to you' : (user?.role === 'vendor' ? 'submitted by you' : 'in pipeline')}</p>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex rounded-lg border border-border overflow-hidden" data-testid="kanban-view-toggle">
@@ -367,7 +367,7 @@ export default function CandidatesPage() {
             <Button size="sm" variant="outline" className="bg-card" onClick={() => setBulkDialog('tag')} data-testid="bulk-tag-button">Tag</Button>
             <Button size="sm" variant="outline" className="bg-card" onClick={() => setBulkDialog('assign')} data-testid="bulk-assign-button">Assign</Button>
             <Button size="sm" variant="destructive" onClick={() => { setBulkRejectCategory(''); setBulkReason(''); setBulkDialog('reject'); }} data-testid="bulk-reject-button">Reject</Button>
-            {user?.role === 'admin' && (
+            {['super_admin', 'admin'].includes(user?.role) && (
               <Button size="sm" variant="destructive" onClick={() => setBulkDialog('delete')} data-testid="bulk-delete-button">Delete</Button>
             )}
           </div>

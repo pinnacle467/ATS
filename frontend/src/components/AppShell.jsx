@@ -126,7 +126,7 @@ export default function AppShell({ children }) {
               </Link>
             );
           })}
-          {(user?.role === 'admin' || user?.role === 'recruiter') && (
+          {['super_admin', 'admin', 'recruiter'].includes(user?.role) && (
             <>
               <div className="pt-4 pb-1 px-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
                 Career Portal
@@ -154,7 +154,7 @@ export default function AppShell({ children }) {
             </>
           )}
         </nav>
-        {(user?.role === 'admin' || user?.role === 'recruiter') && (
+        {['super_admin', 'admin', 'recruiter', 'vendor'].includes(user?.role) && (
           <div className="p-3 border-t border-border">
             <Button
               className="w-full"

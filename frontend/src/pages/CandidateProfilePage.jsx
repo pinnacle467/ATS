@@ -29,8 +29,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
 import { StageBadge, REJECTION_REASONS } from '@/pages/CandidatesPage';
+import ChangeLog from '@/components/ChangeLog';
 import SendEmailDialog from '@/components/SendEmailDialog';
 import { useAuth } from '@/context/AuthContext';
+import { isAdminOrHigher } from '@/lib/roles';
 import { api, errMsg } from '@/lib/api';
 
 const RECO_LABEL = { strong_yes: 'Strong Yes', yes: 'Yes', no: 'No', strong_no: 'Strong No' };
@@ -66,7 +68,7 @@ export default function CandidateProfilePage() {
   const [jobs, setJobs] = useState([]);
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
 
-  const isRecruiter = user?.role === 'admin' || user?.role === 'recruiter';
+  const isRecruiter = ['super_admin', 'admin', 'recruiter'].includes(user?.role);
 
   const load = useCallback(() => {
     api
@@ -305,7 +307,7 @@ export default function CandidateProfilePage() {
               <SelectContent>{stages.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
             </Select>
           )}
-          {user?.role === 'admin' && (
+          {['super_admin', 'admin'].includes(user?.role) && (
             <Button variant="outline" size="icon" onClick={deleteCandidate} aria-label="Delete candidate" data-testid="candidate-delete-button">
               <Trash2 className="h-4 w-4 text-destructive" />
             </Button>
@@ -548,6 +550,23 @@ export default function CandidateProfilePage() {
           </Card>
         </div>
       </div>
+
+      {/* Change Log (Admin+ only) */}
+      {isAdminOrHigher(user) && cand && (
+        <Card className="shadow-none" data-testid="candidate-change-log-card">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Clock className="h-4 w-4" /> Change Log
+              <span className="text-xs font-normal text-muted-foreground">Every edit is tracked</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="max-h-[420px] overflow-y-auto thin-scroll pr-1">
+              <ChangeLog entityType="candidate" entityId={cand.id} />
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Reject dialog */}
       <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>

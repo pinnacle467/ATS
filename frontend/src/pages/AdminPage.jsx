@@ -17,11 +17,36 @@ import { api, errMsg } from '@/lib/api';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// New 4-role model. Keep legacy names as fallback labels.
+const ROLE_OPTIONS = [
+  { value: 'super_admin', label: 'Super Admin', desc: 'Full unrestricted access' },
+  { value: 'admin', label: 'Admin', desc: 'Manages jobs, candidates, users (except Super Admins)' },
+  { value: 'interview_panel', label: 'Interview Panel', desc: 'Job-limited access; no salary/budget' },
+  { value: 'vendor', label: 'Agency / Vendor', desc: 'Job-limited access; own submissions only' },
+];
+const ROLE_LABELS = {
+  super_admin: 'Super Admin',
+  admin: 'Admin',
+  interview_panel: 'Interview Panel',
+  vendor: 'Agency / Vendor',
+  // legacy
+  recruiter: 'Admin (legacy)',
+  interviewer: 'Interview Panel (legacy)',
+};
+
+function assignableRolesForActor(actorRole) {
+  // Super Admin can assign any role; Admin can assign anything except super_admin
+  if (actorRole === 'super_admin') return ROLE_OPTIONS;
+  return ROLE_OPTIONS.filter((r) => r.value !== 'super_admin');
+}
+
 function UsersTab() {
   const { user: me } = useAuth();
   const [users, setUsers] = useState([]);
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'recruiter', title: '' });
+  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'admin', title: '' });
+
+  const assignable = assignableRolesForActor(me?.role);
 
   const load = useCallback(() => {
     api.get('/users').then((r) => setUsers(r.data)).catch(() => {});
@@ -35,9 +60,9 @@ function UsersTab() {
     if (form.password.length < 6) return toast.error('Password must be at least 6 characters');
     try {
       await api.post('/users', form);
-      toast.success(`${form.name} invited as ${form.role}`);
+      toast.success(`${form.name} invited as ${ROLE_LABELS[form.role] || form.role}`);
       setInviteOpen(false);
-      setForm({ name: '', email: '', password: '', role: 'recruiter', title: '' });
+      setForm({ name: '', email: '', password: '', role: 'admin', title: '' });
       load();
     } catch (e) {
       toast.error(errMsg(e));
@@ -47,7 +72,7 @@ function UsersTab() {
   const setRole = async (u, role) => {
     try {
       await api.put(`/users/${u.id}`, { role });
-      toast.success(`${u.name} is now ${role}`);
+      toast.success(`${u.name} is now ${ROLE_LABELS[role] || role}`);
       load();
     } catch (e) {
       toast.error(errMsg(e));
@@ -140,11 +165,16 @@ function UsersTab() {
               <div className="space-y-1.5">
                 <Label>Role</Label>
                 <Select value={form.role} onValueChange={(v) => setForm((f) => ({ ...f, role: v }))}>
-                  <SelectTrigger data-testid="invite-role-select"><SelectValue /></SelectTrigger>
+                  <SelectTrigger data-testid="invite-role-select"><SelectValue>{ROLE_LABELS[form.role] || form.role}</SelectValue></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="admin">Admin</SelectItem>
-                    <SelectItem value="recruiter">Recruiter</SelectItem>
-                    <SelectItem value="interviewer">Interviewer</SelectItem>
+                    {assignable.map((r) => (
+                      <SelectItem key={r.value} value={r.value}>
+                        <div className="flex flex-col">
+                          <span>{r.label}</span>
+                          <span className="text-[10px] text-muted-foreground">{r.desc}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

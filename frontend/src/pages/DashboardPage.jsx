@@ -44,7 +44,7 @@ export default function DashboardPage() {
       .then(([j, d, u, t, a]) => {
         setJobs(j.data);
         setDepartments(d.data);
-        setRecruiters(u.data.filter((x) => x.role === 'recruiter' || x.role === 'admin'));
+        setRecruiters(u.data.filter((x) => ['super_admin', 'admin', 'recruiter'].includes(x.role)));
         setTasks(t.data);
         setActivities(a.data);
       })

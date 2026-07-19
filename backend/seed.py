@@ -52,11 +52,11 @@ async def seed_if_empty():
 
     # ---- Users ----
     users = [
-        {'id': new_id(), 'name': 'Abhijeet Kang', 'email': 'admin@ats.com', 'password_hash': hash_password('Admin@123'), 'role': 'admin', 'title': 'Head of Talent', 'active': True, 'last_login': None, 'created_at': now_iso()},
-        {'id': new_id(), 'name': 'Rachel Kim', 'email': 'recruiter@ats.com', 'password_hash': hash_password('Recruit@123'), 'role': 'recruiter', 'title': 'Senior Recruiter', 'active': True, 'last_login': None, 'created_at': now_iso()},
-        {'id': new_id(), 'name': 'David Lee', 'email': 'interviewer@ats.com', 'password_hash': hash_password('Interview@123'), 'role': 'interviewer', 'title': 'Engineering Manager', 'active': True, 'last_login': None, 'created_at': now_iso()},
-        {'id': new_id(), 'name': 'Jane Foster', 'email': 'jane@ats.com', 'password_hash': hash_password('Jane@123'), 'role': 'recruiter', 'title': 'Recruiter', 'active': True, 'last_login': None, 'created_at': now_iso()},
-        {'id': new_id(), 'name': 'Sam Rivera', 'email': 'sam@ats.com', 'password_hash': hash_password('Sam@123'), 'role': 'interviewer', 'title': 'Staff Engineer', 'active': True, 'last_login': None, 'created_at': now_iso()},
+        {'id': new_id(), 'name': 'Abhijeet Kang', 'email': 'admin@ats.com', 'password_hash': hash_password('Admin@123'), 'role': 'super_admin', 'title': 'Head of Talent', 'active': True, 'last_login': None, 'created_at': now_iso()},
+        {'id': new_id(), 'name': 'Rachel Kim', 'email': 'recruiter@ats.com', 'password_hash': hash_password('Recruit@123'), 'role': 'admin', 'title': 'Senior Recruiter', 'active': True, 'last_login': None, 'created_at': now_iso()},
+        {'id': new_id(), 'name': 'David Lee', 'email': 'interviewer@ats.com', 'password_hash': hash_password('Interview@123'), 'role': 'interview_panel', 'title': 'Engineering Manager', 'active': True, 'last_login': None, 'created_at': now_iso()},
+        {'id': new_id(), 'name': 'Jane Foster', 'email': 'jane@ats.com', 'password_hash': hash_password('Jane@123'), 'role': 'admin', 'title': 'Recruiter', 'active': True, 'last_login': None, 'created_at': now_iso()},
+        {'id': new_id(), 'name': 'Sam Rivera', 'email': 'sam@ats.com', 'password_hash': hash_password('Sam@123'), 'role': 'interview_panel', 'title': 'Staff Engineer', 'active': True, 'last_login': None, 'created_at': now_iso()},
     ]
     await db.users.insert_many(users)
     admin, rachel, david, jane, sam = users

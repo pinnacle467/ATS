@@ -9,6 +9,13 @@ from pydantic import BaseModel
 from auth import get_current_user, interviewer_candidate_ids, require_roles
 from database import db
 from fit_scorer import recompute_candidate_fit
+from permissions import (
+    is_admin_or_higher,
+    is_interview_panel,
+    is_vendor,
+    strip_candidate_sensitive,
+    visible_job_ids_for_user,
+)
 from utils import clean, log_activity, log_audit, new_id, next_candidate_code, notify, now_iso
 
 router = APIRouter(prefix='/candidates', tags=['candidates'])
@@ -73,10 +80,40 @@ class BulkAction(BaseModel):
 
 
 async def _visible_query(user: dict) -> dict:
-    if user['role'] == 'interviewer':
+    """Restrict candidate visibility based on the caller's role.
+      - super_admin/admin: no restriction
+      - interview_panel: only candidates on jobs they are on the team of
+      - vendor: only candidates they submitted (candidate.submitted_by == user.id)
+                AND on a job they are on the team of
+      - legacy 'interviewer' (pre-migration): only candidates from their assigned interviews
+    """
+    if is_admin_or_higher(user):
+        return {}
+    role = user.get('role')
+    if role == 'interviewer':
+        # Legacy interviewer: keep old behaviour (assigned interviews)
         ids = await interviewer_candidate_ids(user['id'])
         return {'id': {'$in': ids}}
-    return {}
+    if is_interview_panel(user):
+        job_ids = await visible_job_ids_for_user(db, user)
+        return {'job_id': {'$in': job_ids}} if job_ids else {'id': {'$in': []}}
+    if is_vendor(user):
+        job_ids = await visible_job_ids_for_user(db, user)
+        if not job_ids:
+            return {'id': {'$in': []}}
+        # Vendors only see their own submitted candidates
+        return {'job_id': {'$in': job_ids}, 'submitted_by': user['id']}
+    # Unknown role — deny everything
+    return {'id': {'$in': []}}
+
+
+def _apply_candidate_visibility(cand: Optional[dict], user: dict) -> Optional[dict]:
+    """Strip sensitive candidate fields for interview_panel users."""
+    if not cand:
+        return cand
+    if is_interview_panel(user) or user.get('role') == 'interviewer':
+        strip_candidate_sensitive(cand)
+    return cand
 
 
 def _build_filters(q, job_id, stage, source, recruiter_id, tag, status):
@@ -132,6 +169,7 @@ async def list_candidates(
         c['job_title'] = job.get('title')
         c['job_code'] = job.get('job_code')
         c['recruiter_name'] = users.get(c.get('recruiter_id'), {}).get('name')
+        _apply_candidate_visibility(c, user)
     return {'items': items, 'total': total, 'page': page, 'limit': limit}
 
 
@@ -168,22 +206,48 @@ async def export_csv(
 
 @router.get('/{candidate_id}')
 async def get_candidate(candidate_id: str, user: dict = Depends(get_current_user)):
-    if user['role'] == 'interviewer':
+    if user.get('role') == 'interviewer':
         allowed = await interviewer_candidate_ids(user['id'])
         if candidate_id not in allowed:
             raise HTTPException(status_code=403, detail='Not authorized to view this candidate')
     c = await db.candidates.find_one({'id': candidate_id}, {'_id': 0})
     if not c:
         raise HTTPException(status_code=404, detail='Candidate not found')
+    # RBAC: non-admin must have visibility to this candidate
+    if not is_admin_or_higher(user):
+        vis = await _visible_query(user)
+        # Vendors are additionally restricted to candidates they submitted
+        if is_vendor(user) and c.get('submitted_by') != user.get('id'):
+            raise HTTPException(status_code=403, detail='Not authorized to view this candidate')
+        if is_interview_panel(user):
+            allowed_job_ids = await visible_job_ids_for_user(db, user)
+            if c.get('job_id') not in allowed_job_ids:
+                raise HTTPException(status_code=403, detail='Not authorized to view this candidate')
     job = await db.jobs.find_one({'id': c.get('job_id')}, {'_id': 0}) if c.get('job_id') else None
     rec = await db.users.find_one({'id': c.get('recruiter_id')}, {'_id': 0, 'id': 1, 'name': 1}) if c.get('recruiter_id') else None
     c['job'] = job
     c['recruiter'] = rec
+    # Strip sensitive fields for interview_panel
+    _apply_candidate_visibility(c, user)
+    # Also strip job's sensitive fields when embedded
+    if job and (is_interview_panel(user) or is_vendor(user)):
+        team = (job.get('team_members') or [])
+        my_entry = next((m for m in team if m.get('user_id') == user.get('id')), None)
+        if not (my_entry and my_entry.get('salary_visible')):
+            from permissions import strip_job_sensitive
+            strip_job_sensitive(c['job'])
     return c
 
 
 @router.post('')
-async def create_candidate(body: CandidateCreate, background_tasks: BackgroundTasks, user: dict = Depends(require_roles('admin', 'recruiter'))):
+async def create_candidate(body: CandidateCreate, background_tasks: BackgroundTasks, user: dict = Depends(require_roles('admin', 'recruiter', 'vendor'))):
+    # Vendors can only add candidates to jobs they're on the team of
+    if is_vendor(user):
+        if not body.job_id:
+            raise HTTPException(status_code=422, detail='Vendors must specify a job_id when adding candidates')
+        allowed = await visible_job_ids_for_user(db, user)
+        if body.job_id not in allowed:
+            raise HTTPException(status_code=403, detail='You are not on the team for this job')
     stage = body.stage
     if body.job_id and not stage:
         job = await db.jobs.find_one({'id': body.job_id})
@@ -202,8 +266,10 @@ async def create_candidate(body: CandidateCreate, background_tasks: BackgroundTa
         'skills': body.skills,
         'job_id': body.job_id,
         'stage': stage or 'Applied',
-        'source': body.source,
+        'source': 'vendor' if is_vendor(user) else body.source,
         'recruiter_id': body.recruiter_id or user['id'],
+        'submitted_by': user['id'],
+        'submitted_by_name': user.get('name'),
         'tags': body.tags,
         'resume_file_id': body.resume_file_id,
         'low_confidence_fields': body.low_confidence_fields,
@@ -220,6 +286,7 @@ async def create_candidate(body: CandidateCreate, background_tasks: BackgroundTa
     }
     await db.candidates.insert_one(cand)
     await log_activity(user, 'application', f'added candidate {body.name}', candidate_id=cand['id'], job_id=body.job_id)
+    await log_audit(user, 'candidate_created', 'candidate', cand['id'], f'{body.name} ({body.email or "no email"})')
     if body.notes:
         await db.notes.insert_one({'id': new_id(), 'candidate_id': cand['id'], 'author_id': user['id'],
                                    'author_name': user['name'], 'text': body.notes, 'note_type': 'note', 'created_at': now_iso()})
@@ -234,10 +301,25 @@ async def update_candidate(candidate_id: str, body: CandidateUpdate, background_
     if not c:
         raise HTTPException(status_code=404, detail='Candidate not found')
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    # Build field-level diff for the audit trail — the change log surfaces this per candidate
+    change_details = []
+    for k, v in updates.items():
+        if k == 'updated_at':
+            continue
+        old_v = c.get(k)
+        if old_v != v:
+            def _repr(x):
+                if x is None:
+                    return '(empty)'
+                s = str(x)
+                return s if len(s) <= 60 else s[:57] + '...'
+            change_details.append(f'{k}: {_repr(old_v)} → {_repr(v)}')
     updates['updated_at'] = now_iso()
     if 'recruiter_id' in updates and updates['recruiter_id'] != c.get('recruiter_id'):
         await notify(updates['recruiter_id'], 'assignment', f"Candidate {c['name']} was assigned to you", f"/candidates/{candidate_id}")
     await db.candidates.update_one({'id': candidate_id}, {'$set': updates})
+    if change_details:
+        await log_audit(user, 'candidate_updated', 'candidate', candidate_id, '; '.join(change_details))
     if 'job_id' in updates and updates['job_id'] != c.get('job_id'):
         background_tasks.add_task(recompute_candidate_fit, candidate_id)
     return clean(await db.candidates.find_one({'id': candidate_id}, {'_id': 0}))
@@ -268,7 +350,7 @@ async def move_stage(candidate_id: str, body: StageMove, user: dict = Depends(re
 
 @router.post('/bulk-action')
 async def bulk_action(body: BulkAction, user: dict = Depends(require_roles('admin', 'recruiter'))):
-    if body.action == 'delete' and user['role'] != 'admin':
+    if body.action == 'delete' and not is_admin_or_higher(user):
         raise HTTPException(status_code=403, detail='Only admins can delete candidates')
     count = 0
     for cid in body.candidate_ids:

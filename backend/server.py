@@ -53,6 +53,8 @@ api_router.include_router(routes_calendar.router)
 api_router.include_router(routes_career.router)
 api_router.include_router(routes_career_security.router)
 api_router.include_router(routes_analytics.router)
+from routes_change_log import router as change_log_router
+api_router.include_router(change_log_router)
 
 app.include_router(api_router)
 
@@ -76,6 +78,13 @@ async def startup():
     inserted = await seed_default_templates()
     if inserted:
         logger.info(f'Seeded {inserted} default email template(s)')
+    # RBAC migration — idempotent, promotes seeded admins to super_admin and
+    # renames recruiter->admin, interviewer->interview_panel; backfills job.team_members
+    from database import db as _db
+    from migrate_rbac import migrate_to_new_rbac
+    rbac_counts = await migrate_to_new_rbac(_db)
+    if any(rbac_counts.values()):
+        logger.info(f'RBAC migration applied: {rbac_counts}')
     asyncio.create_task(reminder_loop())
     asyncio.create_task(snapshot_loop())
     logger.info('snapshot_loop scheduled — data_seed/snapshot.json will be refreshed every 5 minutes')

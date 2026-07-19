@@ -1,14 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, FileText, MapPin, Trash2, Upload, Users } from 'lucide-react';
+import { ArrowLeft, FileText, History, MapPin, Trash2, Upload, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import ChangeLog from '@/components/ChangeLog';
+import JobTeamPanel from '@/components/JobTeamPanel';
 import { StageBadge, SOURCES, ResumeIndicator } from '@/pages/CandidatesPage';
 import { JdIndicator } from '@/pages/JobsPage';
+import { useAuth } from '@/context/AuthContext';
+import { isAdminOrHigher } from '@/lib/roles';
 import { api, errMsg } from '@/lib/api';
 
 const STATUS_STYLE = {
@@ -22,6 +26,7 @@ const DEFAULT_STAGES = ['Applied', 'Screening', 'Interview', 'Offer', 'Hired', '
 export default function JobDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [job, setJob] = useState(null);
   const [candidates, setCandidates] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -29,7 +34,10 @@ export default function JobDetailPage() {
   const [jdDialogOpen, setJdDialogOpen] = useState(false);
   const [jdText, setJdText] = useState('');
   const [jdSaving, setJdSaving] = useState(false);
+  const [detailTab, setDetailTab] = useState('overview');
   const jdFileRef = useRef();
+
+  const canManage = isAdminOrHigher(user);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -267,6 +275,22 @@ export default function JobDetailPage() {
           ))}
         </div>
       </div>
+
+      {/* Team & Access + Change Log (Admin+ only) */}
+      {canManage && (
+        <div className="grid lg:grid-cols-2 gap-4">
+          <JobTeamPanel jobId={job.id} />
+          <div className="rounded-xl border border-border bg-card p-4 space-y-3" data-testid="job-change-log-card">
+            <div className="flex items-center gap-2">
+              <History className="h-4 w-4" />
+              <h3 className="font-semibold text-sm">Change Log</h3>
+            </div>
+            <div className="max-h-[420px] overflow-y-auto thin-scroll pr-1">
+              <ChangeLog entityType="job" entityId={job.id} />
+            </div>
+          </div>
+        </div>
+      )}
 
       <Dialog open={jdDialogOpen} onOpenChange={setJdDialogOpen}>
         <DialogContent className="sm:max-w-lg" data-testid="job-jd-dialog">
