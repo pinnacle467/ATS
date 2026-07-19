@@ -126,12 +126,18 @@ function UsersTab() {
                 </TableCell>
                 <TableCell className="text-sm">{u.email}</TableCell>
                 <TableCell>
-                  <Select value={u.role} onValueChange={(v) => setRole(u, v)} disabled={u.id === me?.id}>
-                    <SelectTrigger className="w-[130px] h-8" data-testid={`admin-user-role-${u.id}`}><SelectValue /></SelectTrigger>
+                  <Select
+                    value={u.role}
+                    onValueChange={(v) => setRole(u, v)}
+                    disabled={u.id === me?.id || (u.role === 'super_admin' && me?.role !== 'super_admin')}
+                  >
+                    <SelectTrigger className="w-[170px] h-8" data-testid={`admin-user-role-${u.id}`}>
+                      <SelectValue>{ROLE_LABELS[u.role] || u.role}</SelectValue>
+                    </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="admin">Admin</SelectItem>
-                      <SelectItem value="recruiter">Recruiter</SelectItem>
-                      <SelectItem value="interviewer">Interviewer</SelectItem>
+                      {assignable.map((r) => (
+                        <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </TableCell>
