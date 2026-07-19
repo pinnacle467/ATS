@@ -17,6 +17,7 @@ from email_templates import (
     VARIABLE_HELP,
     build_context_from_candidate,
     render,
+    send_custom,
     send_template,
 )
 from utils import clean, log_audit, new_id, now_iso
@@ -247,6 +248,135 @@ async def send_to_candidate(body: ManualSendBody, user: dict = Depends(require_r
         await log_audit(user, 'career.email.sent', 'candidate', cand['id'],
                         f"Sent '{body.template_key}' to {cand.get('email')}")
     return result
+
+
+@router.post('/emails/send')
+async def send_emails_to_candidates(body: dict, user: dict = Depends(require_roles('admin', 'recruiter'))):
+    """Send an email to one or many candidates.
+
+    Body:
+      - candidate_ids: List[str]  (required, 1 or more)
+      - template_key: Optional[str]  (if set, use the template; subject/html override the template if also provided)
+      - subject: Optional[str]  (required when template_key is not set)
+      - html_body: Optional[str]  (required when template_key is not set)
+
+    Returns per-candidate results plus aggregate counters.
+    """
+    from pydantic import ValidationError  # noqa: F401
+    candidate_ids = body.get('candidate_ids') or []
+    template_key = (body.get('template_key') or '').strip() or None
+    subject_in = (body.get('subject') or '').strip()
+    html_in = body.get('html_body') or ''
+
+    if not isinstance(candidate_ids, list) or not candidate_ids:
+        raise HTTPException(status_code=422, detail='candidate_ids is required')
+    if len(candidate_ids) > 500:
+        raise HTTPException(status_code=422, detail='Too many candidates in one send (max 500)')
+
+    # If no template, custom body is required
+    if not template_key and (not subject_in or not html_in.strip()):
+        raise HTTPException(status_code=422, detail='Provide a template_key, or both subject and html_body for a custom email')
+
+    # If template requested, load it (also serves as validation)
+    template = None
+    if template_key:
+        template = await db.email_templates.find_one({'key': template_key}, {'_id': 0})
+        if not template:
+            raise HTTPException(status_code=404, detail=f'Email template "{template_key}" not found')
+
+    # Fetch candidates
+    cands = await db.candidates.find({'id': {'$in': candidate_ids}}, {'_id': 0}).to_list(len(candidate_ids))
+    cand_by_id = {c['id']: c for c in cands}
+
+    # Preload jobs referenced by these candidates
+    job_ids = list({c.get('job_id') for c in cands if c.get('job_id')})
+    jobs = await db.jobs.find({'id': {'$in': job_ids}}, {'_id': 0}).to_list(len(job_ids)) if job_ids else []
+    job_by_id = {j['id']: j for j in jobs}
+
+    settings = await _get_settings()
+
+    results = []
+    sent_count = 0
+    failed_count = 0
+    skipped_no_email = 0
+    skipped_missing = 0
+
+    for cid in candidate_ids:
+        cand = cand_by_id.get(cid)
+        if not cand:
+            skipped_missing += 1
+            results.append({'candidate_id': cid, 'sent': False, 'reason': 'candidate_not_found'})
+            continue
+        if not cand.get('email'):
+            skipped_no_email += 1
+            results.append({'candidate_id': cid, 'name': cand.get('name'), 'email': None,
+                            'sent': False, 'reason': 'no_email_on_candidate'})
+            continue
+        job = job_by_id.get(cand.get('job_id')) if cand.get('job_id') else None
+        ctx = build_context_from_candidate(cand, job or {}, settings)
+        recruiter_id = cand.get('recruiter_id') or user.get('id')
+
+        # Decide subject + html source
+        if template and not subject_in and not html_in.strip():
+            # Pure template send — use existing helper (also logs via email_log)
+            result = await send_template(
+                template_key=template['key'],
+                to_email=cand['email'],
+                context=ctx,
+                recruiter_id=recruiter_id,
+            )
+        else:
+            # Either custom, or template with subject/body override
+            eff_subject = subject_in or (template['subject'] if template else '')
+            eff_html = html_in.strip() and html_in or (template['html_body'] if template else '')
+            result = await send_custom(
+                to_email=cand['email'],
+                subject=eff_subject,
+                html_body=eff_html,
+                context=ctx,
+                recruiter_id=recruiter_id,
+                log_meta={'candidate_id': cid, 'template_key': template['key'] if template else 'custom'},
+            )
+
+        if result.get('sent'):
+            sent_count += 1
+            await log_audit(user, 'career.email.sent', 'candidate', cid,
+                            f"Sent email to {cand.get('email')}" + (f" (template: {template['key']})" if template else ' (custom)'))
+            # Also append an activity so it shows up in the timeline
+            try:
+                await db.activities.insert_one({
+                    'id': new_id(),
+                    'candidate_id': cid,
+                    'actor_id': user.get('id'),
+                    'actor_name': user.get('name'),
+                    'action': 'email_sent',
+                    'details': f"Sent email: {template['name'] if template else 'Custom'} — subject: {(subject_in or (template['subject'] if template else ''))[:120]}",
+                    'created_at': now_iso(),
+                })
+            except Exception:
+                pass
+        else:
+            failed_count += 1
+
+        results.append({
+            'candidate_id': cid,
+            'name': cand.get('name'),
+            'email': cand.get('email'),
+            'sent': bool(result.get('sent')),
+            'reason': result.get('reason'),
+            'error': result.get('error'),
+            'gmail_id': result.get('gmail_id'),
+            'sender': result.get('sender'),
+        })
+
+    return {
+        'total': len(candidate_ids),
+        'sent': sent_count,
+        'failed': failed_count,
+        'skipped_no_email': skipped_no_email,
+        'skipped_missing': skipped_missing,
+        'results': results,
+    }
 
 
 # ---------------- Cookie / Privacy / reCAPTCHA / Rate limit settings ----------------

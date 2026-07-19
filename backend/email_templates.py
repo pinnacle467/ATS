@@ -171,6 +171,59 @@ async def send_template(
         return {'sent': False, 'reason': 'send_failed', 'error': str(e)[:200]}
 
 
+async def send_custom(
+    to_email: str,
+    subject: str,
+    html_body: str,
+    context: dict,
+    recruiter_id: Optional[str] = None,
+    log_meta: Optional[dict] = None,
+) -> dict:
+    """Send a free-form (non-template) email. Subject/body are rendered so that
+    `{{candidate_name}}` etc. still work if the recruiter uses variables.
+    Returns {sent: bool, reason: str, ...}."""
+    if not to_email:
+        return {'sent': False, 'reason': 'no_recipient'}
+    if not (subject or '').strip():
+        return {'sent': False, 'reason': 'no_subject'}
+    if not (html_body or '').strip():
+        return {'sent': False, 'reason': 'no_body'}
+
+    creds, sender = await _pick_sender_creds(recruiter_id)
+    if not creds:
+        return {'sent': False, 'reason': 'no_gmail_connected'}
+
+    rendered_subject = render(subject, context)
+    rendered_html = render(html_body, context)
+    try:
+        result = send_gmail(creds, to_email, rendered_subject, rendered_html)
+        await db.email_log.insert_one({
+            'id': new_id(),
+            'template_key': 'custom',
+            'to_email': to_email,
+            'subject': rendered_subject,
+            'sender_user_id': sender['id'] if sender else None,
+            'gmail_message_id': result.get('id'),
+            'status': 'sent',
+            'created_at': now_iso(),
+            **(log_meta or {}),
+        })
+        return {'sent': True, 'gmail_id': result.get('id'), 'sender': sender['email'] if sender else None}
+    except Exception as e:
+        await db.email_log.insert_one({
+            'id': new_id(),
+            'template_key': 'custom',
+            'to_email': to_email,
+            'subject': rendered_subject,
+            'sender_user_id': sender['id'] if sender else None,
+            'status': 'failed',
+            'error': str(e)[:500],
+            'created_at': now_iso(),
+            **(log_meta or {}),
+        })
+        return {'sent': False, 'reason': 'send_failed', 'error': str(e)[:200]}
+
+
 async def seed_default_templates():
     """Insert any DEFAULT_TEMPLATES not already present in the collection."""
     existing = {t['key'] for t in await db.email_templates.find({}, {'_id': 0, 'key': 1}).to_list(50)}

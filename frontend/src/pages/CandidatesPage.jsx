@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Download, FileSpreadsheet, FileText, Kanban, List, Search, UserPlus, X } from 'lucide-react';
+import { Download, FileSpreadsheet, FileText, Kanban, List, Mail, Search, UserPlus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import KanbanBoard from '@/components/KanbanBoard';
+import SendEmailDialog from '@/components/SendEmailDialog';
 import { useAuth } from '@/context/AuthContext';
 import { api, errMsg } from '@/lib/api';
 
@@ -107,6 +108,7 @@ export default function CandidatesPage() {
   const [kanbanReject, setKanbanReject] = useState(null);
   const [kanbanRejectCategory, setKanbanRejectCategory] = useState('');
   const [kanbanRejectDetail, setKanbanRejectDetail] = useState('');
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
 
   const isRecruiter = user?.role === 'admin' || user?.role === 'recruiter';
   const limit = view === 'kanban' ? 500 : 25;
@@ -358,6 +360,9 @@ export default function CandidatesPage() {
         <div className="flex flex-wrap items-center gap-2 bg-accent border border-border rounded-xl px-4 py-2.5" data-testid="candidates-bulk-actions-bar">
           <span className="text-sm font-medium text-accent-foreground">{selected.length} selected</span>
           <div className="flex gap-2 ml-auto">
+            <Button size="sm" variant="outline" className="bg-card" onClick={() => setEmailDialogOpen(true)} data-testid="bulk-send-email-button">
+              <Mail className="h-3.5 w-3.5 mr-1" /> Send Email
+            </Button>
             <Button size="sm" variant="outline" className="bg-card" onClick={() => setBulkDialog('move_stage')} data-testid="bulk-move-stage-button">Move Stage</Button>
             <Button size="sm" variant="outline" className="bg-card" onClick={() => setBulkDialog('tag')} data-testid="bulk-tag-button">Tag</Button>
             <Button size="sm" variant="outline" className="bg-card" onClick={() => setBulkDialog('assign')} data-testid="bulk-assign-button">Assign</Button>
@@ -553,6 +558,19 @@ export default function CandidatesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Send Email dialog (bulk) */}
+      <SendEmailDialog
+        open={emailDialogOpen}
+        onOpenChange={setEmailDialogOpen}
+        candidateIds={selected}
+        candidateNames={data.items.filter((c) => selected.includes(c.id)).map((c) => c.name)}
+        onSent={(res) => {
+          if (res?.sent > 0) {
+            setSelected([]);
+          }
+        }}
+      />
     </div>
   );
 }

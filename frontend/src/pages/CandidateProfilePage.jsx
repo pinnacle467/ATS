@@ -29,6 +29,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
 import { StageBadge, REJECTION_REASONS } from '@/pages/CandidatesPage';
+import SendEmailDialog from '@/components/SendEmailDialog';
 import { useAuth } from '@/context/AuthContext';
 import { api, errMsg } from '@/lib/api';
 
@@ -63,6 +64,7 @@ export default function CandidateProfilePage() {
   const [pendingStage, setPendingStage] = useState(null);
   const [notFound, setNotFound] = useState(false);
   const [jobs, setJobs] = useState([]);
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
 
   const isRecruiter = user?.role === 'admin' || user?.role === 'recruiter';
 
@@ -285,6 +287,18 @@ export default function CandidateProfilePage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {isRecruiter && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setEmailDialogOpen(true)}
+              disabled={!cand.email}
+              title={cand.email ? 'Send email to this candidate' : 'No email on file'}
+              data-testid="candidate-send-email-button"
+            >
+              <Mail className="h-4 w-4 mr-1.5" /> Send Email
+            </Button>
+          )}
           {isRecruiter && (
             <Select value={cand.stage} onValueChange={onStageChange}>
               <SelectTrigger className="w-[160px]" data-testid="candidate-stage-select"><SelectValue /></SelectTrigger>
@@ -604,6 +618,15 @@ export default function CandidateProfilePage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Send Email dialog */}
+      <SendEmailDialog
+        open={emailDialogOpen}
+        onOpenChange={setEmailDialogOpen}
+        candidateIds={cand ? [cand.id] : []}
+        candidateNames={cand ? [cand.name] : []}
+        onSent={() => load()}
+      />
     </div>
   );
 }
