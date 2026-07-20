@@ -13,6 +13,7 @@ import InterviewsPage from '@/pages/InterviewsPage';
 import JobsPage from '@/pages/JobsPage';
 import JobDetailPage from '@/pages/JobDetailPage';
 import AdminPage from '@/pages/AdminPage';
+import MyIntegrationsPage from '@/pages/MyIntegrationsPage';
 import CareerDashboardPage from '@/pages/career/CareerDashboardPage';
 import CareerJobsPage from '@/pages/career/CareerJobsPage';
 import CareerSettingsPage from '@/pages/career/CareerSettingsPage';
@@ -71,6 +72,7 @@ function App() {
           <Route path="/jobs" element={<Protected roles={['admin', 'recruiter']}><JobsPage /></Protected>} />
           <Route path="/jobs/:id" element={<Protected roles={['admin', 'recruiter']}><JobDetailPage /></Protected>} />
           <Route path="/admin" element={<Protected roles={['admin']}><AdminPage /></Protected>} />
+          <Route path="/my-integrations" element={<Protected><MyIntegrationsPage /></Protected>} />
           <Route path="/career-portal" element={<Protected roles={['admin', 'recruiter']}><CareerDashboardPage /></Protected>} />
           <Route path="/career-portal/jobs" element={<Protected roles={['admin', 'recruiter']}><CareerJobsPage /></Protected>} />
           <Route path="/career-portal/settings" element={<Protected roles={['admin', 'recruiter']}><CareerSettingsPage /></Protected>} />

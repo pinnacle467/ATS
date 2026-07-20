@@ -16,27 +16,43 @@ APP_BASE_URL = os.environ['APP_BASE_URL']
 
 
 @router.get('/oauth/google/login')
-async def google_login(user: dict = Depends(get_current_user)):
-    return {'authorization_url': authorization_url(state=user['id'])}
+async def google_login(return_to: str = '/interviews', user: dict = Depends(get_current_user)):
+    # Encode the return path into state so the callback can redirect the user
+    # back to wherever they clicked Connect from (e.g. /my-integrations).
+    # Whitelist to same-origin paths only.
+    if not isinstance(return_to, str) or not return_to.startswith('/') or return_to.startswith('//'):
+        return_to = '/interviews'
+    state = f"{user['id']}|{return_to}"
+    return {'authorization_url': authorization_url(state=state)}
 
 
 @router.get('/oauth/calendar/callback')
 async def google_callback(code: str = None, state: str = None, error: str = None):
-    if error or not code or not state:
+    # Split state back into user_id + return_to (fallback to /interviews)
+    user_id = state
+    return_to = '/interviews'
+    if state and '|' in state:
+        try:
+            user_id, return_to = state.split('|', 1)
+            if not return_to.startswith('/') or return_to.startswith('//'):
+                return_to = '/interviews'
+        except Exception:
+            user_id, return_to = state, '/interviews'
+    if error or not code or not user_id:
         logger.error(f'Google calendar callback missing code/state, error={error}')
-        return RedirectResponse(f'{APP_BASE_URL}/interviews?calendar=error')
+        return RedirectResponse(f'{APP_BASE_URL}{return_to}?calendar=error')
     try:
         tokens = exchange_code(code)
         info = get_userinfo(tokens['access_token'])
     except Exception:
         logger.exception('Google calendar token exchange failed')
-        return RedirectResponse(f'{APP_BASE_URL}/interviews?calendar=error')
-    await db.users.update_one({'id': state}, {'$set': {
+        return RedirectResponse(f'{APP_BASE_URL}{return_to}?calendar=error')
+    await db.users.update_one({'id': user_id}, {'$set': {
         'google_tokens': tokens,
         'google_calendar_email': info.get('email'),
         'google_calendar_connected_at': now_iso(),
     }})
-    return RedirectResponse(f'{APP_BASE_URL}/interviews?calendar=connected')
+    return RedirectResponse(f'{APP_BASE_URL}{return_to}?calendar=connected')
 
 
 @router.get('/calendar/status')

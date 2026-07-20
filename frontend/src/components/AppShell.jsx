@@ -10,6 +10,7 @@ import {
   Image as ImageIcon,
   LayoutDashboard,
   LogOut,
+  Mail,
   Menu,
   Search,
   Settings,
@@ -271,6 +272,9 @@ function roleSatisfiesNav(userRole, requiredRoles) {
                   <Badge variant="secondary" className="mt-1 capitalize">{user?.role}</Badge>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => navigate('/my-integrations')} data-testid="my-integrations-menu" className="cursor-pointer">
+                  <Mail className="h-4 w-4 mr-2" /> My Integrations
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={logout} data-testid="logout-button" className="cursor-pointer">
                   <LogOut className="h-4 w-4 mr-2" /> Log out
                 </DropdownMenuItem>
