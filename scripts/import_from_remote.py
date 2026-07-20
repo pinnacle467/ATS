@@ -1,5 +1,5 @@
 """One-off importer: pulls real data from the connected remote ATS build
-(https://ats-import.preview.emergentagent.com) via its API and stores it
+(https://ats-builder-21.preview.emergentagent.com) via its API and stores it
 both in the local MongoDB and as a JSON snapshot (backend/data_seed/snapshot.json)
 so future fresh imports/restarts restore this real data instead of synthetic demo data."""
 import base64
@@ -8,7 +8,7 @@ import sys
 
 import requests
 
-REMOTE = 'https://ats-import.preview.emergentagent.com/api'
+REMOTE = 'https://ats-builder-21.preview.emergentagent.com/api'
 ADMIN_EMAIL = 'admin@ats.com'
 ADMIN_PASSWORD = 'Admin@123'
 

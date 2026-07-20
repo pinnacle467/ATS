@@ -4,7 +4,7 @@ import sys
 import requests
 from typing import Optional
 
-BASE_URL = "https://ats-import.preview.emergentagent.com/api"
+BASE_URL = "https://ats-builder-21.preview.emergentagent.com/api"
 SUPER_ADMIN_EMAIL = "admin@ats.com"
 SUPER_ADMIN_PASSWORD = "Admin@123"
 

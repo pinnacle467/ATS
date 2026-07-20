@@ -10,7 +10,7 @@ from pathlib import Path
 import requests
 
 # Backend URL from frontend/.env
-BACKEND_URL = "https://ats-import.preview.emergentagent.com/api"
+BACKEND_URL = "https://ats-builder-21.preview.emergentagent.com/api"
 ADMIN_EMAIL = "admin@ats.com"
 ADMIN_PASSWORD = "Admin@123"
 
