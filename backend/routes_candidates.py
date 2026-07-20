@@ -525,10 +525,37 @@ async def scan_candidate_replies(candidate_id: str, user: dict = Depends(require
     if not creds:
         return {'ok': False, 'reason': 'no_gmail_connected', 'replies': 0, 'updated': False}
 
+    # Ensure the token actually grants inbox-read scope. Older tokens (issued
+    # before gmail.readonly was added to SCOPES) will fail the Gmail API call
+    # silently — surface a clear error so the user knows to reconnect.
+    granted_scopes = (fresh_user.get('google_tokens', {}).get('scope') or '').split(' ')
+    if 'https://www.googleapis.com/auth/gmail.readonly' not in granted_scopes:
+        return {
+            'ok': False,
+            'reason': 'missing_readonly_scope',
+            'message': 'Reconnect your Gmail from My Integrations to grant inbox-read permission.',
+            'replies': 0,
+            'updated': False,
+        }
+
     # Only scan the last 60 days for manual triggers
     from datetime import datetime, timedelta, timezone as _tz
     after_iso = (datetime.now(_tz.utc) - timedelta(days=60)).isoformat()
-    replies = await _asyncio.to_thread(search_replies_from, creds, cand['email'], after_iso, 20)
+    replies, gmail_error = await _asyncio.to_thread(search_replies_from, creds, cand['email'], after_iso, 20)
+    if gmail_error:
+        # Common case: token was refreshed but scope wasn't re-consented, or
+        # the account revoked our access from the Google Security page.
+        return {
+            'ok': False,
+            'reason': gmail_error,
+            'message': (
+                'Reconnect your Gmail from My Integrations to grant inbox-read permission.'
+                if gmail_error in ('insufficient_scope', 'invalid_token')
+                else f'Gmail API error: {gmail_error}'
+            ),
+            'replies': 0,
+            'updated': False,
+        }
 
     best_notice, best_comp = None, None
     for reply in replies:

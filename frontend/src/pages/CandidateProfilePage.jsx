@@ -320,12 +320,21 @@ export default function CandidateProfilePage() {
     try {
       const r = await api.post(`/candidates/${id}/scan-replies`);
       if (r.data?.ok === false) {
-        if (r.data.reason === 'no_gmail_connected') {
-          toast.error('Connect your Gmail first (Interviews → Google Calendar).');
-        } else if (r.data.reason === 'no_email_on_candidate') {
+        const reason = r.data.reason;
+        if (reason === 'no_gmail_connected') {
+          toast.error('Connect your Gmail first from My Integrations.', {
+            action: { label: 'Open', onClick: () => navigate('/my-integrations') },
+            duration: 8000,
+          });
+        } else if (reason === 'missing_readonly_scope' || reason === 'insufficient_scope' || reason === 'invalid_token') {
+          toast.error('Reconnect your Gmail to grant inbox-read permission.', {
+            action: { label: 'Reconnect', onClick: () => navigate('/my-integrations') },
+            duration: 10000,
+          });
+        } else if (reason === 'no_email_on_candidate') {
           toast.error('This candidate has no email on file.');
         } else {
-          toast.error('Could not scan replies');
+          toast.error(r.data.message || `Could not scan replies (${reason || 'unknown error'})`);
         }
       } else if (r.data?.updated) {
         toast.success('Extracted candidate reply — details updated');
@@ -346,7 +355,7 @@ export default function CandidateProfilePage() {
     return (
       <div className="text-center py-20">
         <p className="text-lg font-medium">Candidate not available</p>
-        <p className="text-sm text-muted-foreground mt-1">This candidate doesn't exist or you don't have access.</p>
+        <p className="text-sm text-muted-foreground mt-1">This candidate doesn&apos;t exist or you don&apos;t have access.</p>
         <Button className="mt-4" variant="outline" onClick={() => navigate('/candidates')}>Back to candidates</Button>
       </div>
     );

@@ -98,9 +98,13 @@ async def _scan_once():
             continue
 
         try:
-            replies = await asyncio.to_thread(search_replies_from, creds, to_email, after_iso, 10)
+            replies, gmail_error = await asyncio.to_thread(search_replies_from, creds, to_email, after_iso, 10)
         except Exception:
             logger.exception('gmail search failed for sender=%s to=%s', sender_id, to_email)
+            continue
+        if gmail_error:
+            # Common: user has old tokens without gmail.readonly; log once and skip.
+            logger.info('reply_scan gmail error for sender=%s to=%s: %s', sender_id, to_email, gmail_error)
             continue
         checked += 1
         if not replies:
