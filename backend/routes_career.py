@@ -751,6 +751,9 @@ async def apply_to_job(
             context=ctx,
             sender_user_id=job.get('recruiter_id'),
             allow_admin_fallback=True,
+            # Prevent duplicate auto-replies if the same candidate submits the
+            # apply form twice in quick succession (or if the client retries).
+            dedup_window_seconds=24 * 3600,
         )
     except Exception:
         pass  # never fail the application because email failed

@@ -260,13 +260,21 @@ async def complete_interview(interview_id: str, user: dict = Depends(get_current
         raise HTTPException(status_code=404, detail='Interview not found')
     if user['role'] == 'interviewer' and user['id'] not in iv.get('interviewer_ids', []):
         raise HTTPException(status_code=403, detail='Not your interview')
-    await db.interviews.update_one({'id': interview_id}, {'$set': {'status': 'feedback_pending', 'completed_at': now_iso()}})
-    cand = await db.candidates.find_one({'id': iv['candidate_id']})
-    for iid in iv.get('interviewer_ids', []):
-        await notify(iid, 'feedback', f"Feedback pending for your interview with {cand['name'] if cand else 'candidate'}", '/interviews')
-    await log_activity(user, 'interview_completed', f"marked interview with {cand['name'] if cand else 'candidate'} as completed", candidate_id=iv['candidate_id'])
+    # Idempotent transition: only fire notifications + scorecard-request email
+    # on the FIRST call. If the endpoint is retried (double-click, tab reopen,
+    # duplicate webhook), Mongo's conditional update matches 0 documents and
+    # we return the current state without re-sending anything.
+    res = await db.interviews.update_one(
+        {'id': interview_id, 'status': {'$ne': 'feedback_pending'}},
+        {'$set': {'status': 'feedback_pending', 'completed_at': now_iso()}},
+    )
     updated_iv = await db.interviews.find_one({'id': interview_id})
-    await send_scorecard_request(updated_iv)
+    if res.modified_count == 1:
+        cand = await db.candidates.find_one({'id': iv['candidate_id']})
+        for iid in iv.get('interviewer_ids', []):
+            await notify(iid, 'feedback', f"Feedback pending for your interview with {cand['name'] if cand else 'candidate'}", '/interviews')
+        await log_activity(user, 'interview_completed', f"marked interview with {cand['name'] if cand else 'candidate'} as completed", candidate_id=iv['candidate_id'])
+        await send_scorecard_request(updated_iv)
     return clean(updated_iv)
 
 

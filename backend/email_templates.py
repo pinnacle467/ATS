@@ -139,8 +139,16 @@ async def send_template(
     # compatibility if anything external still passes it.
     recruiter_id: Optional[str] = None,
     allow_admin_fallback: bool = False,
+    dedup_window_seconds: Optional[int] = None,
 ) -> dict:
-    """Render + send a template. Returns {sent: bool, reason: str, ...}."""
+    """Render + send a template. Returns {sent: bool, reason: str, ...}.
+
+    If `dedup_window_seconds` is provided, we consult `email_log` and skip
+    the send if we already dispatched this exact `(template_key, to_email)`
+    pair within that window (used by automated / system-triggered sends like
+    the career-portal `application_received` auto-reply so a double-submit
+    doesn't produce a duplicate confirmation email).
+    """
     tpl = await db.email_templates.find_one({'key': template_key}, {'_id': 0})
     if not tpl:
         return {'sent': False, 'reason': 'template_not_found'}
@@ -148,6 +156,19 @@ async def send_template(
         return {'sent': False, 'reason': 'template_disabled'}
     if not to_email:
         return {'sent': False, 'reason': 'no_recipient'}
+
+    # Dedup guard (opt-in) — protects automated senders from duplicate delivery
+    if dedup_window_seconds and dedup_window_seconds > 0:
+        from datetime import datetime, timezone, timedelta
+        cutoff = (datetime.now(timezone.utc) - timedelta(seconds=dedup_window_seconds)).isoformat()
+        recent = await db.email_log.find_one({
+            'template_key': template_key,
+            'to_email': to_email,
+            'status': 'sent',
+            'created_at': {'$gte': cutoff},
+        })
+        if recent:
+            return {'sent': False, 'reason': 'duplicate_recent_send', 'dedup_of': recent.get('id')}
 
     creds, sender = await _pick_sender_creds(sender_user_id or recruiter_id, allow_admin_fallback=allow_admin_fallback)
     if not creds:
