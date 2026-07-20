@@ -12,6 +12,7 @@ CLIENT_ID = os.environ['GOOGLE_CLIENT_ID']
 CLIENT_SECRET = os.environ['GOOGLE_CLIENT_SECRET']
 REDIRECT_URI = f"{os.environ['APP_BASE_URL']}/api/oauth/calendar/callback"
 SCOPES = ['https://www.googleapis.com/auth/calendar', 'https://www.googleapis.com/auth/gmail.send',
+          'https://www.googleapis.com/auth/gmail.readonly',
           'https://www.googleapis.com/auth/userinfo.email', 'openid']
 AUTH_URI = 'https://accounts.google.com/o/oauth2/v2/auth'
 TOKEN_URI = 'https://oauth2.googleapis.com/token'
@@ -52,13 +53,20 @@ async def get_credentials_for_user(user_doc: dict) -> Credentials | None:
     tokens = user_doc.get('google_tokens')
     if not tokens:
         return None
+    # When refreshing, pass ONLY the scopes actually granted with this token
+    # (from Google's token response's `scope` field). Passing our updated
+    # global SCOPES here would trigger `invalid_scope` if we've added scopes
+    # since the user last consented — they need to re-consent via the auth URL
+    # to grant the newer scopes.
+    granted_scope = tokens.get('scope') or ''
+    granted_scopes = [s for s in granted_scope.split(' ') if s] or SCOPES
     creds = Credentials(
         token=tokens.get('access_token'),
         refresh_token=tokens.get('refresh_token'),
         token_uri=TOKEN_URI,
         client_id=CLIENT_ID,
         client_secret=CLIENT_SECRET,
-        scopes=SCOPES,
+        scopes=granted_scopes,
     )
     if creds.expired and creds.refresh_token:
         creds.refresh(GoogleRequest())

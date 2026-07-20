@@ -89,7 +89,7 @@ def can_manage_role(actor_role: str, target_role: str) -> bool:
 
 # Fields hidden from Interview Panel members when they DON'T have salary_visible on that job
 JOB_SENSITIVE_FIELDS = ('salary_range', 'budget', 'compensation', 'salary_min', 'salary_max')
-CANDIDATE_SENSITIVE_FIELDS = ('expected_salary', 'current_ctc', 'notice_period')
+CANDIDATE_SENSITIVE_FIELDS = ('expected_salary', 'expected_compensation', 'current_ctc', 'notice_period')
 
 
 def strip_job_sensitive(job: Optional[dict]) -> Optional[dict]:

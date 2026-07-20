@@ -107,15 +107,22 @@ def render(template_str: str, context: dict) -> str:
     return re.sub(r'\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}', _sub, template_str)
 
 
-async def _pick_sender_creds(recruiter_id: Optional[str]):
-    """Try recruiter first, then any admin with connected Google. Returns creds or None."""
-    if recruiter_id:
-        u = await db.users.find_one({'id': recruiter_id})
+async def _pick_sender_creds(sender_user_id: Optional[str], allow_admin_fallback: bool = False):
+    """Return the specified user's Gmail creds. When `allow_admin_fallback` is
+    True (only used for system-triggered auto-emails like career-portal
+    auto-replies where there is no logged-in user), fall back to the first
+    admin/super_admin with connected Google. Otherwise strict: caller MUST
+    handle `no_gmail_connected` by prompting the user to connect.
+    """
+    if sender_user_id:
+        u = await db.users.find_one({'id': sender_user_id})
         if u:
             c = await get_credentials_for_user(u)
             if c:
                 return c, u
-    admins = await db.users.find({'role': 'admin', 'active': True}).to_list(20)
+    if not allow_admin_fallback:
+        return None, None
+    admins = await db.users.find({'role': {'$in': ['admin', 'super_admin']}, 'active': True}).to_list(20)
     for u in admins:
         c = await get_credentials_for_user(u)
         if c:
@@ -127,7 +134,11 @@ async def send_template(
     template_key: str,
     to_email: str,
     context: dict,
+    sender_user_id: Optional[str] = None,
+    # Deprecated alias — old callers used `recruiter_id`. Kept only for backwards
+    # compatibility if anything external still passes it.
     recruiter_id: Optional[str] = None,
+    allow_admin_fallback: bool = False,
 ) -> dict:
     """Render + send a template. Returns {sent: bool, reason: str, ...}."""
     tpl = await db.email_templates.find_one({'key': template_key}, {'_id': 0})
@@ -138,7 +149,7 @@ async def send_template(
     if not to_email:
         return {'sent': False, 'reason': 'no_recipient'}
 
-    creds, sender = await _pick_sender_creds(recruiter_id)
+    creds, sender = await _pick_sender_creds(sender_user_id or recruiter_id, allow_admin_fallback=allow_admin_fallback)
     if not creds:
         return {'sent': False, 'reason': 'no_gmail_connected'}
 
@@ -176,7 +187,8 @@ async def send_custom(
     subject: str,
     html_body: str,
     context: dict,
-    recruiter_id: Optional[str] = None,
+    sender_user_id: Optional[str] = None,
+    recruiter_id: Optional[str] = None,  # deprecated alias
     log_meta: Optional[dict] = None,
 ) -> dict:
     """Send a free-form (non-template) email. Subject/body are rendered so that
@@ -189,7 +201,7 @@ async def send_custom(
     if not (html_body or '').strip():
         return {'sent': False, 'reason': 'no_body'}
 
-    creds, sender = await _pick_sender_creds(recruiter_id)
+    creds, sender = await _pick_sender_creds(sender_user_id or recruiter_id)
     if not creds:
         return {'sent': False, 'reason': 'no_gmail_connected'}
 

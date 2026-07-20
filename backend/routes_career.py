@@ -749,7 +749,8 @@ async def apply_to_job(
             template_key='application_received',
             to_email=email_norm,
             context=ctx,
-            recruiter_id=job.get('recruiter_id'),
+            sender_user_id=job.get('recruiter_id'),
+            allow_admin_fallback=True,
         )
     except Exception:
         pass  # never fail the application because email failed

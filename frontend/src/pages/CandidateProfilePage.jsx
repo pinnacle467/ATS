@@ -12,11 +12,15 @@ import {
   Mail,
   MapPin,
   Maximize2,
+  Pencil,
   Phone,
+  Save,
   Star,
   Tag,
   Target,
   Trash2,
+  Wallet,
+  X,
 } from 'lucide-react';
 import { renderAsync } from 'docx-preview';
 import { toast } from 'sonner';
@@ -24,6 +28,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
@@ -67,8 +72,13 @@ export default function CandidateProfilePage() {
   const [notFound, setNotFound] = useState(false);
   const [jobs, setJobs] = useState([]);
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+  const [editingDetails, setEditingDetails] = useState(false);
+  const [editForm, setEditForm] = useState({});
+  const [savingDetails, setSavingDetails] = useState(false);
+  const [scanningReplies, setScanningReplies] = useState(false);
 
   const isRecruiter = ['super_admin', 'admin', 'recruiter'].includes(user?.role);
+  const isAdminPlus = ['super_admin', 'admin'].includes(user?.role);
 
   const load = useCallback(() => {
     api
@@ -260,6 +270,78 @@ export default function CandidateProfilePage() {
     }
   };
 
+  const startEditDetails = () => {
+    setEditForm({
+      email: cand.email || '',
+      phone: cand.phone || '',
+      location: cand.location || '',
+      current_title: cand.current_title || '',
+      current_company: cand.current_company || '',
+      notice_period: cand.notice_period || '',
+      expected_compensation: cand.expected_compensation || '',
+      tags: (cand.tags || []).join(', '),
+    });
+    setEditingDetails(true);
+  };
+
+  const cancelEditDetails = () => {
+    setEditingDetails(false);
+    setEditForm({});
+  };
+
+  const saveDetails = async () => {
+    setSavingDetails(true);
+    try {
+      const payload = {
+        email: editForm.email?.trim() || null,
+        phone: editForm.phone?.trim() || null,
+        location: editForm.location?.trim() || null,
+        current_title: editForm.current_title?.trim() || null,
+        current_company: editForm.current_company?.trim() || null,
+        notice_period: editForm.notice_period?.trim() || null,
+        tags: (editForm.tags || '').split(',').map((t) => t.trim()).filter(Boolean),
+      };
+      if (isAdminPlus) {
+        payload.expected_compensation = editForm.expected_compensation?.trim() || null;
+      }
+      await api.put(`/candidates/${id}`, payload);
+      toast.success('Details updated');
+      setEditingDetails(false);
+      load();
+    } catch (e) {
+      toast.error(errMsg(e, 'Failed to update details'));
+    } finally {
+      setSavingDetails(false);
+    }
+  };
+
+  const scanReplies = async () => {
+    setScanningReplies(true);
+    try {
+      const r = await api.post(`/candidates/${id}/scan-replies`);
+      if (r.data?.ok === false) {
+        if (r.data.reason === 'no_gmail_connected') {
+          toast.error('Connect your Gmail first (Interviews → Google Calendar).');
+        } else if (r.data.reason === 'no_email_on_candidate') {
+          toast.error('This candidate has no email on file.');
+        } else {
+          toast.error('Could not scan replies');
+        }
+      } else if (r.data?.updated) {
+        toast.success('Extracted candidate reply — details updated');
+        load();
+      } else if (r.data?.replies > 0) {
+        toast.message(`Scanned ${r.data.replies} repl${r.data.replies === 1 ? 'y' : 'ies'} — nothing new to extract`);
+      } else {
+        toast.message('No replies found in your inbox yet');
+      }
+    } catch (e) {
+      toast.error(errMsg(e, 'Scan failed'));
+    } finally {
+      setScanningReplies(false);
+    }
+  };
+
   if (notFound)
     return (
       <div className="text-center py-20">
@@ -344,43 +426,141 @@ export default function CandidateProfilePage() {
         {/* Left: details + resume */}
         <div className="lg:col-span-2 space-y-5">
           <Card className="shadow-none">
-            <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Contact & Details</CardTitle></CardHeader>
-            <CardContent className="grid sm:grid-cols-2 gap-3 text-sm">
-              <div className="flex items-center gap-2"><Mail className="h-4 w-4 text-muted-foreground" />{cand.email || <span className="text-muted-foreground">No email</span>}</div>
-              <div className="flex items-center gap-2"><Phone className="h-4 w-4 text-muted-foreground" />{cand.phone || <span className="text-muted-foreground">No phone</span>}</div>
-              <div className="flex items-center gap-2"><MapPin className="h-4 w-4 text-muted-foreground" />{cand.location || <span className="text-muted-foreground">No location</span>}</div>
-              <div className="flex items-center gap-2" data-testid="candidate-job-field">
-                <Briefcase className="h-4 w-4 text-muted-foreground shrink-0" />
-                {isRecruiter ? (
-                  <Select value={cand.job_id || ''} onValueChange={changeJob}>
-                    <SelectTrigger className="h-8 text-sm" data-testid="candidate-job-select">
-                      <SelectValue placeholder="Assign a job" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {jobs.map((j) => <SelectItem key={j.id} value={j.id}>{j.title} · {j.department}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  cand.job?.title || <span className="text-muted-foreground">No job assigned</span>
-                )}
-              </div>
-              <div className="flex items-center gap-2"><Star className="h-4 w-4 text-muted-foreground" />Recruiter: {cand.recruiter?.name || '—'}</div>
-              <div className="flex items-center gap-2" data-testid="candidate-notice-period">
-                <Clock className="h-4 w-4 text-muted-foreground" />
-                Notice Period: {cand.notice_period || <span className="text-muted-foreground">Not specified</span>}
-              </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <Tag className="h-4 w-4 text-muted-foreground" />
-                {(cand.tags || []).length === 0 && <span className="text-muted-foreground">No tags</span>}
-                {(cand.tags || []).map((t) => <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>)}
-              </div>
-              {(cand.skills || []).length > 0 && (
-                <div className="sm:col-span-2">
-                  <Separator className="my-2" />
-                  <div className="flex flex-wrap gap-1.5">
-                    {cand.skills.map((s) => <Badge key={s} variant="outline" className="text-xs">{s}</Badge>)}
-                  </div>
+            <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+              <CardTitle className="text-sm font-semibold">Contact & Details</CardTitle>
+              {isRecruiter && !editingDetails && (
+                <div className="flex items-center gap-1">
+                  {isAdminPlus && cand.email && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={scanReplies}
+                      disabled={scanningReplies}
+                      data-testid="candidate-scan-replies-button"
+                      title="Scan your Gmail inbox for candidate replies and auto-fill Notice Period / Expected Compensation"
+                    >
+                      {scanningReplies ? 'Scanning…' : 'Scan replies'}
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={startEditDetails}
+                    data-testid="candidate-details-edit-button"
+                  >
+                    <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
+                  </Button>
                 </div>
+              )}
+              {editingDetails && (
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={cancelEditDetails}
+                    disabled={savingDetails}
+                    data-testid="candidate-details-cancel-button"
+                  >
+                    <X className="h-3.5 w-3.5 mr-1" /> Cancel
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={saveDetails}
+                    disabled={savingDetails}
+                    data-testid="candidate-details-save-button"
+                  >
+                    <Save className="h-3.5 w-3.5 mr-1" /> {savingDetails ? 'Saving…' : 'Save'}
+                  </Button>
+                </div>
+              )}
+            </CardHeader>
+            <CardContent className="grid sm:grid-cols-2 gap-3 text-sm">
+              {editingDetails ? (
+                <>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground flex items-center gap-1.5"><Mail className="h-3.5 w-3.5" /> Email</Label>
+                    <Input value={editForm.email} onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))} placeholder="candidate@example.com" data-testid="edit-email" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground flex items-center gap-1.5"><Phone className="h-3.5 w-3.5" /> Phone</Label>
+                    <Input value={editForm.phone} onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))} placeholder="+1 555 000 1234" data-testid="edit-phone" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5" /> Location</Label>
+                    <Input value={editForm.location} onChange={(e) => setEditForm((f) => ({ ...f, location: e.target.value }))} placeholder="City, Country" data-testid="edit-location" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground flex items-center gap-1.5"><Briefcase className="h-3.5 w-3.5" /> Current Title</Label>
+                    <Input value={editForm.current_title} onChange={(e) => setEditForm((f) => ({ ...f, current_title: e.target.value }))} placeholder="Senior Engineer" data-testid="edit-current-title" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground flex items-center gap-1.5"><Building2 className="h-3.5 w-3.5" /> Current Company</Label>
+                    <Input value={editForm.current_company} onChange={(e) => setEditForm((f) => ({ ...f, current_company: e.target.value }))} placeholder="Company Inc." data-testid="edit-current-company" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" /> Notice Period</Label>
+                    <Input value={editForm.notice_period} onChange={(e) => setEditForm((f) => ({ ...f, notice_period: e.target.value }))} placeholder="e.g. 60 days, Immediate" data-testid="edit-notice-period" />
+                  </div>
+                  {isAdminPlus && (
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground flex items-center gap-1.5"><Wallet className="h-3.5 w-3.5" /> Expected Compensation <span className="text-[10px] uppercase tracking-wide text-amber-600">Admin only</span></Label>
+                      <Input value={editForm.expected_compensation} onChange={(e) => setEditForm((f) => ({ ...f, expected_compensation: e.target.value }))} placeholder="e.g. 22 LPA, $130k base" data-testid="edit-expected-compensation" />
+                    </div>
+                  )}
+                  <div className="space-y-1 sm:col-span-2">
+                    <Label className="text-xs text-muted-foreground flex items-center gap-1.5"><Tag className="h-3.5 w-3.5" /> Tags (comma-separated)</Label>
+                    <Input value={editForm.tags} onChange={(e) => setEditForm((f) => ({ ...f, tags: e.target.value }))} placeholder="e.g. senior, remote, referral" data-testid="edit-tags" />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2"><Mail className="h-4 w-4 text-muted-foreground" />{cand.email || <span className="text-muted-foreground">No email</span>}</div>
+                  <div className="flex items-center gap-2"><Phone className="h-4 w-4 text-muted-foreground" />{cand.phone || <span className="text-muted-foreground">No phone</span>}</div>
+                  <div className="flex items-center gap-2"><MapPin className="h-4 w-4 text-muted-foreground" />{cand.location || <span className="text-muted-foreground">No location</span>}</div>
+                  <div className="flex items-center gap-2" data-testid="candidate-job-field">
+                    <Briefcase className="h-4 w-4 text-muted-foreground shrink-0" />
+                    {isRecruiter ? (
+                      <Select value={cand.job_id || ''} onValueChange={changeJob}>
+                        <SelectTrigger className="h-8 text-sm" data-testid="candidate-job-select">
+                          <SelectValue placeholder="Assign a job" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {jobs.map((j) => <SelectItem key={j.id} value={j.id}>{j.title} · {j.department}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      cand.job?.title || <span className="text-muted-foreground">No job assigned</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2"><Star className="h-4 w-4 text-muted-foreground" />Recruiter: {cand.recruiter?.name || '—'}</div>
+                  <div className="flex items-center gap-2" data-testid="candidate-notice-period">
+                    <Clock className="h-4 w-4 text-muted-foreground" />
+                    Notice Period: {cand.notice_period || <span className="text-muted-foreground">Not specified</span>}
+                  </div>
+                  {isAdminPlus && (
+                    <div className="flex items-center gap-2" data-testid="candidate-expected-compensation">
+                      <Wallet className="h-4 w-4 text-muted-foreground" />
+                      Expected Comp.: {cand.expected_compensation || <span className="text-muted-foreground">Not specified</span>}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Tag className="h-4 w-4 text-muted-foreground" />
+                    {(cand.tags || []).length === 0 && <span className="text-muted-foreground">No tags</span>}
+                    {(cand.tags || []).map((t) => <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>)}
+                  </div>
+                  {(cand.skills || []).length > 0 && (
+                    <div className="sm:col-span-2">
+                      <Separator className="my-2" />
+                      <div className="flex flex-wrap gap-1.5">
+                        {cand.skills.map((s) => <Badge key={s} variant="outline" className="text-xs">{s}</Badge>)}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </CardContent>
           </Card>

@@ -39,6 +39,7 @@ class CandidateCreate(BaseModel):
     resume_file_id: Optional[str] = None
     low_confidence_fields: list[str] = []
     notice_period: Optional[str] = None
+    expected_compensation: Optional[str] = None
     notes: Optional[str] = None
 
 
@@ -58,6 +59,7 @@ class CandidateUpdate(BaseModel):
     tags: Optional[list[str]] = None
     low_confidence_fields: Optional[list[str]] = None
     notice_period: Optional[str] = None
+    expected_compensation: Optional[str] = None
 
 
 class StageMove(BaseModel):
@@ -275,6 +277,7 @@ async def create_candidate(body: CandidateCreate, background_tasks: BackgroundTa
         'resume_file_id': body.resume_file_id,
         'low_confidence_fields': body.low_confidence_fields,
         'notice_period': body.notice_period,
+        'expected_compensation': body.expected_compensation,
         'status': 'active',
         'rejection_reason': None,
         'fit_score': None,
@@ -492,3 +495,83 @@ async def timeline(candidate_id: str, user: dict = Depends(get_current_user)):
     events = [{'kind': 'note', **n} for n in notes] + [{'kind': 'activity', **a} for a in acts]
     events.sort(key=lambda e: e.get('created_at', ''), reverse=True)
     return events
+
+
+
+@router.post('/{candidate_id}/scan-replies')
+async def scan_candidate_replies(candidate_id: str, user: dict = Depends(require_roles('admin', 'recruiter'))):
+    """Manually trigger a Gmail-inbox scan for candidate replies.
+
+    Uses the currently-logged-in admin/super_admin's Gmail credentials.
+    LLM-extracts notice_period + expected_compensation and updates the
+    candidate record for any fields it currently lacks.
+    """
+    import asyncio as _asyncio
+    from google_calendar import get_credentials_for_user
+    from gmail_reader import search_replies_from
+    from reply_parser import parse_candidate_reply
+
+    if not is_admin_or_higher(user):
+        raise HTTPException(status_code=403, detail='Only admins can scan replies')
+
+    cand = await db.candidates.find_one({'id': candidate_id}, {'_id': 0})
+    if not cand:
+        raise HTTPException(status_code=404, detail='Candidate not found')
+    if not cand.get('email'):
+        return {'ok': False, 'reason': 'no_email_on_candidate', 'replies': 0, 'updated': False}
+
+    fresh_user = await db.users.find_one({'id': user['id']}, {'_id': 0})
+    creds = await get_credentials_for_user(fresh_user or {})
+    if not creds:
+        return {'ok': False, 'reason': 'no_gmail_connected', 'replies': 0, 'updated': False}
+
+    # Only scan the last 60 days for manual triggers
+    from datetime import datetime, timedelta, timezone as _tz
+    after_iso = (datetime.now(_tz.utc) - timedelta(days=60)).isoformat()
+    replies = await _asyncio.to_thread(search_replies_from, creds, cand['email'], after_iso, 20)
+
+    best_notice, best_comp = None, None
+    for reply in replies:
+        body = reply.get('body_text') or reply.get('snippet') or ''
+        if not body.strip():
+            continue
+        try:
+            parsed = await parse_candidate_reply(body, session_label=f'manual-{cand["id"]}-{reply["id"]}')
+        except Exception:
+            continue
+        if parsed.get('notice_period') and not best_notice:
+            best_notice = parsed['notice_period']
+        if parsed.get('expected_compensation') and not best_comp:
+            best_comp = parsed['expected_compensation']
+        if best_notice and best_comp:
+            break
+
+    has_notice = bool(cand.get('notice_period'))
+    has_comp = bool(cand.get('expected_compensation'))
+    write: dict = {}
+    if best_notice and not has_notice:
+        write['notice_period'] = best_notice
+    if best_comp and not has_comp:
+        write['expected_compensation'] = best_comp
+
+    updated = False
+    if write:
+        write['updated_at'] = now_iso()
+        await db.candidates.update_one({'id': candidate_id}, {'$set': write})
+        summary_bits = []
+        if 'notice_period' in write:
+            summary_bits.append(f"notice period → {write['notice_period']}")
+        if 'expected_compensation' in write:
+            summary_bits.append(f"expected compensation → {write['expected_compensation']}")
+        summary = 'Auto-extracted from candidate reply: ' + '; '.join(summary_bits)
+        await log_activity(user, 'reply_extracted', summary, candidate_id=candidate_id)
+        await log_audit(user, 'reply_extracted', 'candidate', candidate_id, summary)
+        updated = True
+
+    return {
+        'ok': True,
+        'replies': len(replies),
+        'updated': updated,
+        'extracted': {'notice_period': best_notice, 'expected_compensation': best_comp},
+        'candidate_had': {'notice_period': cand.get('notice_period'), 'expected_compensation': cand.get('expected_compensation')},
+    }

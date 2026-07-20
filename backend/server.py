@@ -25,6 +25,7 @@ import routes_imports
 import routes_calendar
 from reminder_scheduler import reminder_loop
 from snapshot_scheduler import snapshot_loop
+from reply_scanner import reply_scan_loop
 from email_templates import seed_default_templates
 import routes_career
 import routes_career_security
@@ -87,7 +88,9 @@ async def startup():
         logger.info(f'RBAC migration applied: {rbac_counts}')
     asyncio.create_task(reminder_loop())
     asyncio.create_task(snapshot_loop())
+    asyncio.create_task(reply_scan_loop())
     logger.info('snapshot_loop scheduled — data_seed/snapshot.json will be refreshed every 5 minutes')
+    logger.info('reply_scan_loop scheduled — scanning candidate email replies every 5 minutes')
 
 
 @app.on_event('shutdown')

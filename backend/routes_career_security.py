@@ -202,7 +202,7 @@ async def test_template(key: str, body: TemplateTest, user: dict = Depends(requi
         template_key=key,
         to_email=body.to_email,
         context=ctx,
-        recruiter_id=user.get('id'),
+        sender_user_id=user.get('id'),
     )
     # Override subject with test prefix in the log to make it obvious
     if result.get('sent'):
@@ -242,7 +242,7 @@ async def send_to_candidate(body: ManualSendBody, user: dict = Depends(require_r
         template_key=body.template_key,
         to_email=cand.get('email'),
         context=ctx,
-        recruiter_id=cand.get('recruiter_id') or user.get('id'),
+        sender_user_id=user.get('id'),
     )
     if result.get('sent'):
         await log_audit(user, 'career.email.sent', 'candidate', cand['id'],
@@ -251,8 +251,11 @@ async def send_to_candidate(body: ManualSendBody, user: dict = Depends(require_r
 
 
 @router.post('/emails/send')
-async def send_emails_to_candidates(body: dict, user: dict = Depends(require_roles('admin', 'recruiter'))):
-    """Send an email to one or many candidates.
+async def send_emails_to_candidates(body: dict, user: dict = Depends(require_roles('admin'))):
+    """Send an email to one or many candidates. Admin/Super Admin only —
+    the email is sent FROM the logged-in user's connected Gmail (each caller
+    must connect their own Gmail via /oauth/google/login; there is no shared
+    sender account).
 
     Body:
       - candidate_ids: List[str]  (required, 1 or more)
@@ -314,7 +317,8 @@ async def send_emails_to_candidates(body: dict, user: dict = Depends(require_rol
             continue
         job = job_by_id.get(cand.get('job_id')) if cand.get('job_id') else None
         ctx = build_context_from_candidate(cand, job or {}, settings)
-        recruiter_id = cand.get('recruiter_id') or user.get('id')
+        # Send from the LOGGED-IN admin's own Gmail — no fallback.
+        sender_user_id = user.get('id')
 
         # Decide subject + html source
         if template and not subject_in and not html_in.strip():
@@ -323,7 +327,7 @@ async def send_emails_to_candidates(body: dict, user: dict = Depends(require_rol
                 template_key=template['key'],
                 to_email=cand['email'],
                 context=ctx,
-                recruiter_id=recruiter_id,
+                sender_user_id=sender_user_id,
             )
         else:
             # Either custom, or template with subject/body override
@@ -334,7 +338,7 @@ async def send_emails_to_candidates(body: dict, user: dict = Depends(require_rol
                 subject=eff_subject,
                 html_body=eff_html,
                 context=ctx,
-                recruiter_id=recruiter_id,
+                sender_user_id=sender_user_id,
                 log_meta={'candidate_id': cid, 'template_key': template['key'] if template else 'custom'},
             )
 

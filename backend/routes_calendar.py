@@ -43,7 +43,14 @@ async def google_callback(code: str = None, state: str = None, error: str = None
 async def calendar_status(user: dict = Depends(get_current_user)):
     u = await db.users.find_one({'id': user['id']}, {'_id': 0})
     connected = bool(u and u.get('google_tokens'))
-    return {'connected': connected, 'email': u.get('google_calendar_email') if connected else None}
+    scopes = ((u.get('google_tokens') or {}).get('scope') or '').split(' ') if connected else []
+    return {
+        'connected': connected,
+        'email': u.get('google_calendar_email') if connected else None,
+        'scopes': [s for s in scopes if s],
+        'can_read_inbox': 'https://www.googleapis.com/auth/gmail.readonly' in scopes,
+        'can_send_email': 'https://www.googleapis.com/auth/gmail.send' in scopes,
+    }
 
 
 @router.post('/calendar/disconnect')

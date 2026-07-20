@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { Info, Loader2, Mail } from 'lucide-react';
+import { AlertTriangle, Info, Loader2, Mail } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -28,11 +28,13 @@ export default function SendEmailDialog({ open, onOpenChange, candidateIds = [],
   const [preview, setPreview] = useState(null); // { subject, html }
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [sending, setSending] = useState(false);
+  const [gmailStatus, setGmailStatus] = useState(null); // {connected, email} | null
+  const [connectingGmail, setConnectingGmail] = useState(false);
 
   const count = candidateIds.length;
   const isBulk = count > 1;
 
-  // Load templates when dialog opens
+  // Load templates and Gmail connection status when dialog opens
   useEffect(() => {
     if (!open) return;
     setLoadingTemplates(true);
@@ -50,8 +52,39 @@ export default function SendEmailDialog({ open, onOpenChange, candidateIds = [],
       })
       .catch((e) => toast.error(errMsg(e, 'Failed to load email templates')))
       .finally(() => setLoadingTemplates(false));
+    api
+      .get('/calendar/status')
+      .then((r) => setGmailStatus(r.data))
+      .catch(() => setGmailStatus({ connected: false, email: null }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  const connectGmail = async () => {
+    setConnectingGmail(true);
+    try {
+      const r = await api.get('/oauth/google/login');
+      const url = r.data?.authorization_url;
+      if (url) {
+        // Open in a new tab so the user doesn't lose their draft
+        window.open(url, '_blank', 'noopener');
+        toast.message('Complete the Google sign-in in the new tab, then click Refresh below.');
+      } else {
+        toast.error('Could not start Google sign-in');
+      }
+    } catch (e) {
+      toast.error(errMsg(e, 'Could not start Google sign-in'));
+    } finally {
+      setConnectingGmail(false);
+    }
+  };
+
+  const refreshGmailStatus = () => {
+    api.get('/calendar/status').then((r) => {
+      setGmailStatus(r.data);
+      if (r.data?.connected) toast.success(`Connected as ${r.data.email}`);
+      else toast.error('Still not connected — did you finish the sign-in?');
+    }).catch(() => {});
+  };
 
   // Reset transient state when closed
   useEffect(() => {
@@ -126,7 +159,9 @@ export default function SendEmailDialog({ open, onOpenChange, candidateIds = [],
       // Surface the very first failure reason (e.g. no_gmail_connected) so the admin knows what to fix
       const firstFail = (r.data.results || []).find((x) => !x.sent && x.reason && x.reason !== 'no_email_on_candidate');
       if (firstFail && firstFail.reason === 'no_gmail_connected') {
-        toast.error('No Gmail is connected. Ask an admin to connect Google in Settings → Integrations.', { duration: 6000 });
+        toast.error('Your Gmail is not connected. Click "Connect Gmail" above to sign in with your Google account.', { duration: 8000 });
+        // Refresh the status banner so the connect button shows
+        api.get('/calendar/status').then((r) => setGmailStatus(r.data)).catch(() => {});
       }
 
       onSent?.(r.data);
@@ -152,6 +187,58 @@ export default function SendEmailDialog({ open, onOpenChange, candidateIds = [],
 
         {candidateNames.length > 0 && (
           <p className="text-xs text-muted-foreground -mt-2">Recipients: {previewNames}</p>
+        )}
+
+        {/* Gmail connection banner — emails are sent from the logged-in user's own Gmail */}
+        {gmailStatus && !gmailStatus.connected && (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 text-amber-900 px-3 py-2.5 text-sm flex items-start gap-2" data-testid="gmail-not-connected-banner">
+            <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+            <div className="flex-1">
+              <div className="font-medium">Connect your Gmail to send</div>
+              <div className="text-xs mt-0.5">Emails go out from your own Gmail account. Click Connect Gmail to sign in with Google — you can keep this dialog open.</div>
+              <div className="mt-2 flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={connectGmail}
+                  disabled={connectingGmail}
+                  data-testid="connect-gmail-button"
+                >
+                  {connectingGmail ? 'Opening…' : 'Connect Gmail'}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={refreshGmailStatus}
+                  data-testid="refresh-gmail-status-button"
+                >
+                  I've signed in — refresh
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+        {gmailStatus?.connected && !gmailStatus.can_send_email && (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 text-amber-900 px-3 py-2.5 text-sm flex items-start gap-2" data-testid="gmail-scope-missing-banner">
+            <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+            <div className="flex-1">
+              <div className="font-medium">Reconnect Gmail to grant send permission</div>
+              <div className="text-xs mt-0.5">Your Google account is connected but doesn't grant email-send access yet. Click below to reconnect and grant the extra permission.</div>
+              <div className="mt-2 flex gap-2">
+                <Button variant="outline" size="sm" className="h-7 text-xs" onClick={connectGmail} disabled={connectingGmail} data-testid="reconnect-gmail-button">
+                  {connectingGmail ? 'Opening…' : 'Reconnect Gmail'}
+                </Button>
+                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={refreshGmailStatus}>Refresh</Button>
+              </div>
+            </div>
+          </div>
+        )}
+        {gmailStatus?.connected && gmailStatus.can_send_email && (
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-900 px-3 py-2 text-xs flex items-center gap-2" data-testid="gmail-connected-banner">
+            <Mail className="h-3.5 w-3.5" /> Sending from <span className="font-medium">{gmailStatus.email}</span>
+          </div>
         )}
 
         {/* Mode toggle */}
