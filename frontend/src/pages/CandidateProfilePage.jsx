@@ -164,6 +164,11 @@ export default function CandidateProfilePage() {
   const [editForm, setEditForm] = useState({});
   const [savingDetails, setSavingDetails] = useState(false);
   const [scanningReplies, setScanningReplies] = useState(false);
+  // Inline name-edit state — separate from the Details card edit so users can
+  // rename a candidate quickly from the header without opening the full form.
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState('');
+  const [savingName, setSavingName] = useState(false);
 
   const isRecruiter = ['super_admin', 'admin', 'recruiter'].includes(user?.role);
   const isAdminPlus = ['super_admin', 'admin'].includes(user?.role);
@@ -377,6 +382,40 @@ export default function CandidateProfilePage() {
     setEditForm({});
   };
 
+  const startEditName = () => {
+    setNameDraft(cand?.name || '');
+    setEditingName(true);
+  };
+
+  const cancelEditName = () => {
+    setEditingName(false);
+    setNameDraft('');
+  };
+
+  const saveName = async () => {
+    const next = (nameDraft || '').trim();
+    if (!next) {
+      toast.error('Name cannot be empty');
+      return;
+    }
+    if (next === cand?.name) {
+      cancelEditName();
+      return;
+    }
+    setSavingName(true);
+    try {
+      await api.put(`/candidates/${id}`, { name: next });
+      toast.success('Name updated');
+      setEditingName(false);
+      setNameDraft('');
+      load();
+    } catch (e) {
+      toast.error(errMsg(e, 'Failed to update name'));
+    } finally {
+      setSavingName(false);
+    }
+  };
+
   const saveDetails = async () => {
     setSavingDetails(true);
     try {
@@ -474,7 +513,65 @@ export default function CandidateProfilePage() {
           </Button>
           <div>
             <div className="flex items-center gap-3 flex-wrap">
-              <h1 className="font-display text-2xl font-semibold tracking-tight" data-testid="candidate-name">{cand.name}</h1>
+              {editingName ? (
+                <div className="flex items-center gap-2">
+                  <Input
+                    autoFocus
+                    value={nameDraft}
+                    onChange={(e) => setNameDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') { e.preventDefault(); saveName(); }
+                      if (e.key === 'Escape') { e.preventDefault(); cancelEditName(); }
+                    }}
+                    disabled={savingName}
+                    className="h-9 text-2xl font-display font-semibold tracking-tight px-2 w-[280px] sm:w-[360px]"
+                    maxLength={120}
+                    data-testid="candidate-name-input"
+                    aria-label="Edit candidate name"
+                  />
+                  <Button
+                    size="icon"
+                    variant="default"
+                    onClick={saveName}
+                    disabled={savingName || !nameDraft.trim()}
+                    className="h-8 w-8"
+                    data-testid="candidate-name-save-button"
+                    aria-label="Save name"
+                    title="Save (Enter)"
+                  >
+                    <Save className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={cancelEditName}
+                    disabled={savingName}
+                    className="h-8 w-8"
+                    data-testid="candidate-name-cancel-button"
+                    aria-label="Cancel edit"
+                    title="Cancel (Esc)"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 group">
+                  <h1 className="font-display text-2xl font-semibold tracking-tight" data-testid="candidate-name">{cand.name}</h1>
+                  {isRecruiter && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={startEditName}
+                      className="h-7 w-7 text-muted-foreground opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                      data-testid="candidate-name-edit-button"
+                      aria-label="Edit name"
+                      title="Edit name"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                </div>
+              )}
               {cand.candidate_code && (
                 <span className="text-xs font-mono text-muted-foreground bg-secondary rounded-full px-2.5 py-0.5" data-testid="candidate-code">{cand.candidate_code}</span>
               )}
