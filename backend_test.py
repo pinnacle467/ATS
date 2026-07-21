@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 
 # Public endpoint from frontend/.env
-BASE_URL = "https://ats-builder-21.preview.emergentagent.com/api"
+BASE_URL = "https://ats-build-preview.preview.emergentagent.com/api"
 
 # Test credentials from /app/memory/test_credentials.md
 CREDENTIALS = {
