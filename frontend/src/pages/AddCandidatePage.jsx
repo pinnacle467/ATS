@@ -290,11 +290,13 @@ export default function AddCandidatePage() {
     }
   };
 
-  // Chunked bulk parse: processes files in batches of 10 (backend limit is 25 per request)
-  // so we can support dragging entire folders of resumes.
+  // Chunked bulk parse: processes files in batches (backend limit is 25 per request,
+  // but LLM concurrency on the free tier is 1 — so we keep chunks small so each
+  // request finishes within the ~100s Cloudflare/ingress timeout. With ~10s per
+  // resume LLM call, 4 files/batch = ~40s per request = safe margin.
   const parseBulk = async (files) => {
     setParsing(true);
-    const CHUNK = 10;
+    const CHUNK = 4;
     const chunks = [];
     for (let i = 0; i < files.length; i += CHUNK) chunks.push(files.slice(i, i + CHUNK));
     let done = 0;
@@ -306,14 +308,28 @@ export default function AddCandidatePage() {
         const fd = new FormData();
         batch.forEach((f) => fd.append('files', f));
         try {
-          const r = await api.post('/resumes/parse-bulk', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+          // Bump the per-request timeout so the batch has time to finish. Axios
+          // default is browser-controlled; explicit 120s here matches the ingress
+          // ceiling and lets the batch complete even when the LLM is slow.
+          const r = await api.post('/resumes/parse-bulk', fd, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+            timeout: 120000,
+          });
           const ok = r.data.results.filter((x) => x.status === 'success');
           const bad = r.data.results.filter((x) => x.status === 'error');
           setDrafts((d) => [...d, ...ok.map(parsedToDraft)]);
           okCount += ok.length;
           bad.forEach((b) => errors.push(`${b.filename}: ${b.error}`));
         } catch (e) {
-          batch.forEach((f) => errors.push(`${f.name}: ${errMsg(e, 'batch failed')}`));
+          // Detect Cloudflare 520/524 or network timeout — friendlier message so
+          // the user knows to try a smaller batch rather than getting a scary
+          // "origin overloaded" Cloudflare page.
+          const status = e?.response?.status;
+          const isTimeout = e?.code === 'ECONNABORTED' || status === 520 || status === 524 || status === 502 || status === 504;
+          const reason = isTimeout
+            ? 'took too long to parse — try uploading fewer files at once or split into smaller batches'
+            : errMsg(e, 'batch failed');
+          batch.forEach((f) => errors.push(`${f.name}: ${reason}`));
         }
         done += batch.length;
         setBulkProgress({ current: done, total: files.length, phase: 'Parsing' });
@@ -322,7 +338,7 @@ export default function AddCandidatePage() {
       if (errors.length) {
         // group errors into one toast to avoid spam when folder has many bad files
         const shown = errors.slice(0, 3).join('\n');
-        toast.error(`${errors.length} file${errors.length === 1 ? '' : 's'} failed:\n${shown}${errors.length > 3 ? `\n…and ${errors.length - 3} more` : ''}`);
+        toast.error(`${errors.length} file${errors.length === 1 ? '' : 's'} failed:\n${shown}${errors.length > 3 ? `\n…and ${errors.length - 3} more` : ''}`, { duration: 15000 });
       }
     } finally {
       setParsing(false);
