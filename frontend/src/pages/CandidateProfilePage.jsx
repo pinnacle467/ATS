@@ -150,6 +150,15 @@ export default function CandidateProfilePage() {
   const [resumeUrl, setResumeUrl] = useState(null);
   const [resumeType, setResumeType] = useState(null); // null | 'loading' | 'pdf' | 'docx' | 'unsupported' | 'error'
   const [resumeBlob, setResumeBlob] = useState(null);
+  const [resumeFilename, setResumeFilename] = useState('');
+  // Track viewport width so the resume preview can degrade gracefully on mobile,
+  // where iOS Safari + most Android browsers cannot render PDFs inside an
+  // <iframe src="blob:...">. Below md (768px) we show a big tap-friendly
+  // "Open Resume" card instead of the broken iframe.
+  const [isMobileViewport, setIsMobileViewport] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia('(max-width: 767px)').matches;
+  });
   const docxContainerRef = useRef(null);
   const expandedDocxContainerRef = useRef(null);
   const [resumeExpandOpen, setResumeExpandOpen] = useState(false);
@@ -205,10 +214,25 @@ export default function CandidateProfilePage() {
   }, [isRecruiter]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const mq = window.matchMedia('(max-width: 767px)');
+    const handler = (e) => setIsMobileViewport(e.matches);
+    // Modern + Safari-legacy compat: addEventListener when available, else
+    // fall back to the deprecated addListener API.
+    if (mq.addEventListener) mq.addEventListener('change', handler);
+    else mq.addListener(handler);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener('change', handler);
+      else mq.removeListener(handler);
+    };
+  }, []);
+
+  useEffect(() => {
     let url;
     let cancelled = false;
     setResumeUrl(null);
     setResumeBlob(null);
+    setResumeFilename('');
     setResumeType(cand?.resume_file_id ? 'loading' : null);
     if (cand?.resume_file_id) {
       api
@@ -218,13 +242,19 @@ export default function CandidateProfilePage() {
           const contentType = (r.headers['content-type'] || '').toLowerCase();
           const dispo = r.headers['content-disposition'] || '';
           const nameMatch = dispo.match(/filename="?([^"]+)"?/i);
-          const ext = (nameMatch?.[1] || '').toLowerCase().split('.').pop();
+          const filename = nameMatch?.[1] || '';
+          const ext = filename.toLowerCase().split('.').pop();
           const blob = new Blob([r.data], { type: r.headers['content-type'] });
+          setResumeFilename(filename);
           if (contentType.includes('pdf') || ext === 'pdf') {
             url = URL.createObjectURL(blob);
             setResumeUrl(url);
             setResumeType('pdf');
           } else if (contentType.includes('word') || contentType.includes('officedocument') || ext === 'docx' || ext === 'doc') {
+            // Also create a blob URL for the "Open in new tab" affordance on
+            // mobile — desktop still uses `renderAsync` to render inline.
+            url = URL.createObjectURL(blob);
+            setResumeUrl(url);
             setResumeBlob(blob);
             setResumeType('docx');
           } else {
@@ -874,7 +904,7 @@ export default function CandidateProfilePage() {
             <CardHeader className="pb-2 flex-row items-center justify-between space-y-0">
               <CardTitle className="text-sm font-semibold flex items-center gap-2"><FileText className="h-4 w-4" /> Resume</CardTitle>
               <div className="flex items-center gap-2">
-                {cand.resume_file_id && (resumeType === 'pdf' || resumeType === 'docx') && (
+                {cand.resume_file_id && !isMobileViewport && (resumeType === 'pdf' || resumeType === 'docx') && (
                   <Button size="sm" variant="outline" onClick={() => setResumeExpandOpen(true)} data-testid="candidate-resume-expand-button">
                     <Maximize2 className="h-4 w-4 mr-1" /> Expand
                   </Button>
@@ -890,10 +920,45 @@ export default function CandidateProfilePage() {
               {!cand.resume_file_id && <p className="text-sm text-muted-foreground py-4 text-center">No resume on file for this candidate.</p>}
               {resumeType === 'loading' && <p className="text-sm text-muted-foreground py-4 text-center">Loading preview...</p>}
               {resumeType === 'error' && <p className="text-sm text-destructive py-4 text-center">Could not load resume preview. Try downloading instead.</p>}
-              {resumeType === 'pdf' && resumeUrl && (
+
+              {/* Mobile: iframe/docx-preview does NOT work reliably on iOS Safari
+                  and most Android browsers — show a big tap-friendly card
+                  instead that hands the file off to the native viewer. */}
+              {isMobileViewport && cand.resume_file_id && resumeUrl && (resumeType === 'pdf' || resumeType === 'docx' || resumeType === 'unsupported') && (
+                <div
+                  className="w-full rounded-lg border border-border bg-secondary/30 p-6 flex flex-col items-center justify-center gap-3 text-center"
+                  data-testid="candidate-resume-mobile-open"
+                >
+                  <FileText className="h-10 w-10 text-muted-foreground" />
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">{resumeFilename || 'Resume'}</p>
+                    <p className="text-xs text-muted-foreground">Mobile browsers can’t preview {resumeType === 'docx' ? 'Word documents' : 'PDFs'} inline. Tap below to open with your device viewer.</p>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2 w-full max-w-xs pt-1">
+                    <Button
+                      className="w-full"
+                      onClick={() => window.open(resumeUrl, '_blank', 'noopener,noreferrer')}
+                      data-testid="candidate-resume-open-button"
+                    >
+                      <ExternalLink className="h-4 w-4 mr-1.5" /> Open Resume
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={downloadResume}
+                      data-testid="candidate-resume-mobile-download-button"
+                    >
+                      <Download className="h-4 w-4 mr-1.5" /> Download
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Desktop: keep the existing inline previews */}
+              {!isMobileViewport && resumeType === 'pdf' && resumeUrl && (
                 <iframe title="Resume preview" src={resumeUrl} className="w-full h-[720px] rounded-lg border border-border bg-white" />
               )}
-              {(resumeType === 'docx' || resumeType === 'docx-error') && (
+              {!isMobileViewport && (resumeType === 'docx' || resumeType === 'docx-error') && (
                 <div
                   ref={docxContainerRef}
                   data-testid="candidate-resume-docx-preview"
@@ -904,7 +969,7 @@ export default function CandidateProfilePage() {
                   )}
                 </div>
               )}
-              {resumeType === 'unsupported' && (
+              {!isMobileViewport && resumeType === 'unsupported' && (
                 <p className="text-sm text-muted-foreground py-4 text-center">Preview is not available for this file type — use Download instead.</p>
               )}
             </CardContent>
