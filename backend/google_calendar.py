@@ -136,3 +136,38 @@ def update_event(creds: Credentials, event_id: str, **fields) -> dict:
 
 def delete_event(creds: Credentials, event_id: str):
     _service(creds).events().delete(calendarId='primary', eventId=event_id, sendUpdates='all').execute()
+
+
+def list_events(creds: Credentials, time_min_iso: str, time_max_iso: str,
+                calendar_id: str = 'primary', max_results: int = 250) -> list[dict]:
+    """List real (non-recurring-master) calendar events between two ISO
+    timestamps, ordered by start time. Recurring instances are expanded via
+    singleEvents=True so we get one row per real occurrence.
+
+    Used by the "Sync interviews" feature to pull events the user scheduled
+    directly in Google Calendar (i.e. outside the ATS) so we can create
+    matching Interview records here.
+    """
+    service = _service(creds)
+    events: list[dict] = []
+    page_token = None
+    # Google caps at 2500 per page; we paginate defensively but stop at max_results.
+    while True:
+        page_size = min(250, max_results - len(events))
+        if page_size <= 0:
+            break
+        resp = service.events().list(
+            calendarId=calendar_id,
+            timeMin=time_min_iso,
+            timeMax=time_max_iso,
+            singleEvents=True,
+            orderBy='startTime',
+            maxResults=page_size,
+            pageToken=page_token,
+            showDeleted=False,
+        ).execute()
+        events.extend(resp.get('items', []))
+        page_token = resp.get('nextPageToken')
+        if not page_token:
+            break
+    return events

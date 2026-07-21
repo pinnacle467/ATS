@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { addDays, format, startOfWeek } from 'date-fns';
 import {
   BookOpen, CalendarCheck2, CalendarPlus, CheckCircle2, ChevronLeft, ChevronRight,
-  ClipboardList, Clock, ExternalLink, Globe, Link2Off, MapPin, User, Users, Video, XCircle,
+  ClipboardList, Clock, ExternalLink, Globe, Link2Off, Loader2, MapPin, RefreshCw, User, Users, Video, XCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
@@ -71,6 +71,8 @@ export default function InterviewsPage() {
   const [kitOpen, setKitOpen] = useState(null);
   const [calStatus, setCalStatus] = useState(null);
   const [calBusy, setCalBusy] = useState(false);
+  const [syncBusy, setSyncBusy] = useState(false);
+  const [syncResult, setSyncResult] = useState(null);
 
   const isRecruiter = ['super_admin', 'admin', 'recruiter'].includes(user?.role);
 
@@ -163,6 +165,30 @@ export default function InterviewsPage() {
     try { await api.post('/calendar/disconnect'); toast.success('Google Calendar disconnected'); loadCalStatus(); }
     catch (e) { toast.error(errMsg(e)); }
     finally { setCalBusy(false); }
+  };
+
+  // Pull events from the connected user's Google Calendar and create ATS
+  // interview records for any event whose attendees include a known candidate
+  // email. Idempotent — reruns are safe.
+  const syncInterviewsFromCalendar = async () => {
+    setSyncBusy(true);
+    setSyncResult(null);
+    try {
+      const r = await api.post('/calendar/sync-interviews', null, { params: { days_back: 14, days_forward: 30 } });
+      setSyncResult(r.data);
+      const n = (r.data?.imported || []).length;
+      if (n > 0) {
+        toast.success(`Imported ${n} interview${n === 1 ? '' : 's'} from Google Calendar`);
+        // Refresh the calendar view so the new interviews show up.
+        load();
+      } else {
+        toast.info('No new interviews found in your Google Calendar');
+      }
+    } catch (e) {
+      toast.error(errMsg(e));
+    } finally {
+      setSyncBusy(false);
+    }
   };
 
   // -------- Filtering --------
@@ -708,9 +734,23 @@ export default function InterviewsPage() {
               )}
             </div>
             {calStatus.connected ? (
-              <Button size="sm" variant="outline" onClick={disconnectCalendar} disabled={calBusy} data-testid="google-calendar-disconnect-button">
-                <Link2Off className="h-3.5 w-3.5 mr-1" /> Disconnect
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={syncInterviewsFromCalendar}
+                  disabled={syncBusy}
+                  data-testid="google-calendar-sync-button"
+                  title="Import interviews you scheduled directly in Google Calendar (last 14 days + next 30)"
+                >
+                  {syncBusy
+                    ? <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> Syncing…</>
+                    : <><RefreshCw className="h-3.5 w-3.5 mr-1" /> Sync interviews</>}
+                </Button>
+                <Button size="sm" variant="outline" onClick={disconnectCalendar} disabled={calBusy} data-testid="google-calendar-disconnect-button">
+                  <Link2Off className="h-3.5 w-3.5 mr-1" /> Disconnect
+                </Button>
+              </div>
             ) : (
               <Button size="sm" onClick={connectCalendar} disabled={calBusy} data-testid="google-calendar-connect-button">
                 <CalendarCheck2 className="h-3.5 w-3.5 mr-1" /> Connect Google Calendar
@@ -719,6 +759,64 @@ export default function InterviewsPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Sync-from-Google-Calendar result dialog */}
+      <Dialog open={!!syncResult} onOpenChange={(o) => { if (!o) setSyncResult(null); }}>
+        <DialogContent className="max-w-lg" data-testid="calendar-sync-result-dialog">
+          <DialogHeader>
+            <DialogTitle>Google Calendar sync</DialogTitle>
+          </DialogHeader>
+          {syncResult && (
+            <div className="space-y-3 text-sm">
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-md border p-2">
+                  <div className="text-xs text-muted-foreground">Imported</div>
+                  <div className="text-lg font-semibold" data-testid="sync-count-imported">{(syncResult.imported || []).length}</div>
+                </div>
+                <div className="rounded-md border p-2">
+                  <div className="text-xs text-muted-foreground">Events scanned</div>
+                  <div className="text-lg font-semibold" data-testid="sync-count-scanned">{syncResult.scanned ?? 0}</div>
+                </div>
+                <div className="rounded-md border p-2">
+                  <div className="text-xs text-muted-foreground">Already imported</div>
+                  <div className="text-lg font-semibold">{syncResult.skipped_duplicate ?? 0}</div>
+                </div>
+                <div className="rounded-md border p-2">
+                  <div className="text-xs text-muted-foreground">No candidate match</div>
+                  <div className="text-lg font-semibold">{syncResult.skipped_no_candidate_match ?? 0}</div>
+                </div>
+              </div>
+              {(syncResult.imported || []).length > 0 ? (
+                <div>
+                  <div className="mb-1 text-xs font-medium text-muted-foreground">New interviews created</div>
+                  <div className="max-h-56 overflow-y-auto divide-y rounded-md border">
+                    {syncResult.imported.map((iv) => (
+                      <Link
+                        key={iv.id}
+                        to={`/candidates/${iv.candidate_id}`}
+                        className="flex items-center justify-between gap-2 px-3 py-2 hover:bg-secondary"
+                      >
+                        <div className="min-w-0">
+                          <div className="truncate font-medium">{iv.candidate_name || iv.summary}</div>
+                          <div className="truncate text-xs text-muted-foreground">{iv.summary}</div>
+                        </div>
+                        <Badge variant="outline" className="shrink-0">{iv.type?.replace('_', ' ')}</Badge>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-muted-foreground">
+                  Nothing new to import. Interviews are only imported when at least one attendee&apos;s email matches a candidate in your ATS.
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Window scanned: last 14 days + next 30 days. Re-run anytime — already-imported events are skipped automatically.
+              </p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Filters + date navigation */}
       <div className="flex flex-wrap items-center gap-2">

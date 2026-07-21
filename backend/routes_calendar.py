@@ -1,18 +1,37 @@
 import logging
 import os
+import re
+from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import RedirectResponse
 
 from auth import get_current_user
 from database import db
-from google_calendar import authorization_url, exchange_code, get_userinfo
-from utils import now_iso
+from google_calendar import authorization_url, exchange_code, get_credentials_for_user, get_userinfo, list_events
+from utils import clean, log_activity, new_id, notify, now_iso
 
 router = APIRouter(tags=['calendar'])
 logger = logging.getLogger(__name__)
 
 APP_BASE_URL = os.environ['APP_BASE_URL']
+
+# Heuristics used by /calendar/sync-interviews to guess a sensible interview
+# `type` from an event summary. Order matters — first match wins.
+_TYPE_KEYWORDS = [
+    ('phone_screen', re.compile(r'\b(phone\s*screen|phone[- ]interview|screening\s*call|recruiter\s*screen)\b', re.I)),
+    ('technical',    re.compile(r'\b(technical|coding|system\s*design|tech\s*interview|live\s*coding|pairing)\b', re.I)),
+    ('onsite',       re.compile(r'\b(on[- ]?site|final\s*round|super\s*day|loop)\b', re.I)),
+    ('panel',        re.compile(r'\b(panel|group\s*interview)\b', re.I)),
+]
+
+
+def _guess_interview_type(summary: str) -> str:
+    s = summary or ''
+    for label, pattern in _TYPE_KEYWORDS:
+        if pattern.search(s):
+            return label
+    return 'phone_screen'  # sane default for an ambiguous "Interview with X"
 
 
 @router.get('/oauth/google/login')
@@ -75,3 +94,239 @@ async def calendar_disconnect(user: dict = Depends(get_current_user)):
         'google_tokens': '', 'google_calendar_email': '', 'google_calendar_connected_at': '',
     }})
     return {'ok': True}
+
+
+@router.post('/calendar/sync-interviews')
+async def sync_interviews_from_calendar(
+    days_back: int = 14,
+    days_forward: int = 30,
+    user: dict = Depends(get_current_user),
+):
+    """Pull real events from the caller's connected Google Calendar and create
+    ATS interview records for any event whose attendees include a known
+    candidate email. Idempotent — events already imported (matched by
+    `google_event_id`) are skipped.
+
+    Response shape (also mirrored to the UI dialog):
+        {
+          "imported": [ {id, candidate_name, summary, scheduled_at} … ],
+          "skipped_duplicate": N,
+          "skipped_no_candidate_match": N,
+          "skipped_ats_created": N,     # events the ATS itself created
+          "scanned": N,
+          "range": {"from": iso, "to": iso}
+        }
+    """
+    # Sanity-clamp so a rogue client can't request 10-year windows.
+    days_back = max(0, min(days_back, 180))
+    days_forward = max(0, min(days_forward, 180))
+
+    # Refresh the user doc so we have the freshest google_tokens (get_credentials_for_user
+    # will refresh the access token if expired).
+    user_doc = await db.users.find_one({'id': user['id']})
+    if not user_doc:
+        raise HTTPException(status_code=404, detail='User not found')
+    creds = await get_credentials_for_user(user_doc)
+    if not creds:
+        raise HTTPException(status_code=400, detail='Google Calendar is not connected for your account.')
+
+    # Time window (UTC ISO with the required trailing Z that Google wants).
+    now = datetime.now(timezone.utc)
+    time_min = (now - timedelta(days=days_back)).replace(microsecond=0)
+    time_max = (now + timedelta(days=days_forward)).replace(microsecond=0)
+    time_min_iso = time_min.isoformat().replace('+00:00', 'Z')
+    time_max_iso = time_max.isoformat().replace('+00:00', 'Z')
+
+    try:
+        events = list_events(creds, time_min_iso=time_min_iso, time_max_iso=time_max_iso, max_results=500)
+    except Exception as exc:
+        logger.exception('calendar sync: list_events failed')
+        # Return 400 rather than 502 so Cloudflare doesn't swallow the body with
+        # its own generic "origin returned an invalid response" page. This is
+        # user-actionable — they need to reconnect their Google account.
+        msg = 'Could not read your Google Calendar. Try disconnecting and reconnecting.'
+        # If the underlying error is an auth/refresh failure, be specific.
+        exc_text = str(exc).lower()
+        if 'invalid_client' in exc_text or 'invalid_grant' in exc_text or 'refresherror' in exc_text:
+            msg = ('Your Google Calendar authorization has expired or was revoked. '
+                   'Please Disconnect and then Connect Google Calendar again.')
+        raise HTTPException(status_code=400, detail=msg)
+
+    # Pre-load all candidate emails once (lowercased) so the per-event lookup
+    # is O(attendees) instead of N Mongo round-trips per event.
+    candidates_by_email: dict[str, dict] = {}
+    async for cand in db.candidates.find({'email': {'$exists': True, '$ne': None}}, {'_id': 0, 'id': 1, 'name': 1, 'email': 1, 'job_id': 1, 'stage': 1}):
+        em = (cand.get('email') or '').strip().lower()
+        if em:
+            candidates_by_email[em] = cand
+    users_by_email: dict[str, dict] = {}
+    async for u in db.users.find({}, {'_id': 0, 'id': 1, 'name': 1, 'email': 1, 'active': 1}):
+        em = (u.get('email') or '').strip().lower()
+        if em:
+            users_by_email[em] = u
+
+    # Events the ATS *itself* created were already logged as interviews; use the
+    # stored google_event_id set to filter them out fast.
+    existing_event_ids = set()
+    async for iv in db.interviews.find({'google_event_id': {'$exists': True, '$ne': None}}, {'_id': 0, 'google_event_id': 1, 'created_by': 1}):
+        gid = iv.get('google_event_id')
+        if gid:
+            existing_event_ids.add(gid)
+
+    imported = []
+    skipped_duplicate = 0
+    skipped_no_match = 0
+    skipped_ats_created = 0
+
+    for ev in events:
+        if ev.get('status') == 'cancelled':
+            continue
+        # ATS-created events have this key we set ourselves in create_event's
+        # requestId; but our dedup by google_event_id catches those too. Kept
+        # as a defensive branch for events created by *older* code.
+        req_id = (ev.get('conferenceData', {}).get('createRequest') or {}).get('requestId', '')
+        looks_ats = isinstance(req_id, str) and req_id.startswith('ats-')
+
+        event_id = ev.get('id')
+        if event_id and event_id in existing_event_ids:
+            if looks_ats:
+                skipped_ats_created += 1
+            else:
+                skipped_duplicate += 1
+            continue
+
+        # Skip all-day events (no dateTime, only date) — interviews are timed.
+        start_obj = ev.get('start') or {}
+        end_obj = ev.get('end') or {}
+        start_iso = start_obj.get('dateTime')
+        end_iso = end_obj.get('dateTime')
+        if not start_iso or not end_iso:
+            continue
+
+        # Resolve attendees against our candidate index.
+        attendees = ev.get('attendees') or []
+        attendee_emails = [(a.get('email') or '').strip().lower() for a in attendees]
+        # Also include the event organizer / creator as a candidate for matching,
+        # in case the invite was set up so the candidate is the organizer.
+        org_email = ((ev.get('organizer') or {}).get('email') or '').strip().lower()
+        creator_email = ((ev.get('creator') or {}).get('email') or '').strip().lower()
+        candidate_email_candidates = [e for e in attendee_emails + [org_email, creator_email] if e]
+
+        matched_candidate = None
+        matched_email = None
+        for em in candidate_email_candidates:
+            if em in candidates_by_email:
+                matched_candidate = candidates_by_email[em]
+                matched_email = em
+                break
+
+        if not matched_candidate:
+            skipped_no_match += 1
+            continue
+
+        # Interviewer IDs = attendees whose email is a known user (excluding
+        # the matched candidate). Deduplicate & preserve order.
+        interviewer_ids: list[str] = []
+        seen_iids = set()
+        for em in attendee_emails:
+            if not em or em == matched_email:
+                continue
+            u = users_by_email.get(em)
+            if u and u.get('id') and u['id'] not in seen_iids:
+                interviewer_ids.append(u['id'])
+                seen_iids.add(u['id'])
+        # If no known-user attendee was found, at least assign the connecting
+        # user as the interviewer so the interview is visible & assignable.
+        if not interviewer_ids:
+            interviewer_ids = [user['id']]
+
+        # Duration in minutes (fallback 60).
+        try:
+            start_dt = datetime.fromisoformat(start_iso.replace('Z', '+00:00'))
+            end_dt = datetime.fromisoformat(end_iso.replace('Z', '+00:00'))
+            duration_min = max(15, int((end_dt - start_dt).total_seconds() // 60))
+        except Exception:
+            duration_min = 60
+            start_dt = None
+
+        # Past events → feedback_pending; future events → scheduled.
+        is_past = bool(start_dt and start_dt < now)
+        status = 'feedback_pending' if is_past else 'scheduled'
+
+        # Video link: prefer hangoutLink, fall back to conferenceData.entryPoints,
+        # else scan the description for a common video URL.
+        video_link = ev.get('hangoutLink') or ''
+        if not video_link:
+            for ep in (ev.get('conferenceData', {}).get('entryPoints') or []):
+                if ep.get('entryPointType') == 'video' and ep.get('uri'):
+                    video_link = ep['uri']
+                    break
+        if not video_link:
+            m = re.search(r'https?://\S*(?:meet\.google|zoom\.us|teams\.microsoft|whereby|webex)\S*', ev.get('description') or '')
+            if m:
+                video_link = m.group(0)
+
+        summary = ev.get('summary') or f"Interview with {matched_candidate.get('name', 'candidate')}"
+        iv_type = _guess_interview_type(summary)
+
+        iv = {
+            'id': new_id(),
+            'candidate_id': matched_candidate['id'],
+            'job_id': matched_candidate.get('job_id'),
+            'stage': matched_candidate.get('stage'),
+            'type': iv_type,
+            'interviewer_ids': interviewer_ids,
+            'scheduled_at': start_iso,
+            'timezone': (start_obj.get('timeZone') or 'UTC'),
+            'duration_min': duration_min,
+            'location': ev.get('location') or None,
+            'video_link': video_link or None,
+            'notes': None,
+            'status': status,
+            'created_by': user['id'],
+            'created_at': now_iso(),
+            # Sync-specific fields:
+            'google_event_id': event_id,
+            'google_event_link': ev.get('htmlLink'),
+            'calendar_synced': True,
+            'source': 'google_calendar_sync',
+            'imported_from_email': user_doc.get('google_calendar_email'),
+            'imported_summary': summary,
+        }
+        await db.interviews.insert_one(iv)
+        existing_event_ids.add(event_id)  # so re-appearances in this same run (recurring) are deduped
+
+        await log_activity(
+            user, 'interview_imported',
+            f"imported '{summary}' from Google Calendar as a {iv_type.replace('_', ' ')} interview with {matched_candidate.get('name', 'candidate')}",
+            candidate_id=matched_candidate['id'], job_id=iv.get('job_id'),
+        )
+        # Notify interviewers other than the syncer so they know it now lives in ATS.
+        for iid in interviewer_ids:
+            if iid == user['id']:
+                continue
+            await notify(iid, 'interview', f"Imported from Google Calendar: {iv_type.replace('_', ' ')} interview with {matched_candidate.get('name', 'candidate')}", '/interviews')
+
+        imported.append({
+            'id': iv['id'],
+            'candidate_id': matched_candidate['id'],
+            'candidate_name': matched_candidate.get('name'),
+            'summary': summary,
+            'scheduled_at': start_iso,
+            'type': iv_type,
+            'status': status,
+        })
+
+    logger.info(
+        'calendar sync (user=%s): scanned=%d imported=%d duplicate=%d ats_created=%d no_match=%d',
+        user.get('email'), len(events), len(imported), skipped_duplicate, skipped_ats_created, skipped_no_match,
+    )
+
+    return clean({
+        'imported': imported,
+        'skipped_duplicate': skipped_duplicate,
+        'skipped_no_candidate_match': skipped_no_match,
+        'skipped_ats_created': skipped_ats_created,
+        'scanned': len(events),
+        'range': {'from': time_min_iso, 'to': time_max_iso},
+    })
