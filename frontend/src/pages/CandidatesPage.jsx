@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -688,13 +688,11 @@ export default function CandidatesPage() {
         <DialogContent className="sm:max-w-md" data-testid="bulk-scan-dialog">
           <DialogHeader>
             <DialogTitle>Refresh from Email</DialogTitle>
+            <DialogDescription>
+              Auto-extract Notice Period and Expected Compensation from your connected Gmail inbox for every candidate that is missing at least one of the two fields.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 text-sm">
-            <p className="text-muted-foreground">
-              This will scan your connected Gmail inbox for candidate replies and auto-extract{' '}
-              <strong>Notice Period</strong> and <strong>Expected Compensation</strong> for every candidate that is
-              missing at least one of the two fields.
-            </p>
             <p className="text-xs text-muted-foreground">
               This may take a few minutes and uses LLM credits. You can leave this page — progress will keep updating on the toolbar button.
             </p>
