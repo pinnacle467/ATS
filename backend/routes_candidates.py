@@ -1,5 +1,6 @@
 import csv
 import io
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
@@ -17,6 +18,8 @@ from permissions import (
     visible_job_ids_for_user,
 )
 from utils import clean, log_activity, log_audit, new_id, next_candidate_code, notify, now_iso
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix='/candidates', tags=['candidates'])
 
@@ -305,6 +308,28 @@ async def update_candidate(candidate_id: str, body: CandidateUpdate, background_
     if not c:
         raise HTTPException(status_code=404, detail='Candidate not found')
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    # Mark manual edits of the auto-extracted fields so the reply scanner
+    # won't silently clobber them on the next pass. Any explicit write via PUT
+    # here is treated as recruiter-verified truth.
+    now_ts = now_iso()
+    if 'notice_period' in updates and updates['notice_period'] != c.get('notice_period'):
+        existing_meta = c.get('notice_period_meta') or {}
+        updates['notice_period_meta'] = {
+            **existing_meta,
+            'value': updates['notice_period'],
+            'source': 'manual',
+            'edited_at': now_ts,
+            'edited_by': user.get('id'),
+        }
+    if 'expected_compensation' in updates and updates['expected_compensation'] != c.get('expected_compensation'):
+        existing_meta = c.get('expected_compensation_meta') or {}
+        updates['expected_compensation_meta'] = {
+            **existing_meta,
+            'value': updates['expected_compensation'],
+            'source': 'manual',
+            'edited_at': now_ts,
+            'edited_by': user.get('id'),
+        }
     # Build field-level diff for the audit trail — the change log surfaces this per candidate
     change_details = []
     for k, v in updates.items():
@@ -499,17 +524,15 @@ async def timeline(candidate_id: str, user: dict = Depends(get_current_user)):
 
 
 @router.post('/{candidate_id}/scan-replies')
-async def scan_candidate_replies(candidate_id: str, user: dict = Depends(require_roles('admin', 'recruiter'))):
+async def scan_candidate_replies(candidate_id: str, overwrite: bool = False,
+                                  user: dict = Depends(require_roles('admin', 'recruiter'))):
     """Manually trigger a Gmail-inbox scan for candidate replies.
 
     Uses the currently-logged-in admin/super_admin's Gmail credentials.
-    LLM-extracts notice_period + expected_compensation and updates the
-    candidate record for any fields it currently lacks.
+    LLM-extracts notice_period + expected_compensation + snippet + confidence
+    and updates the candidate record (respecting manual edits unless overwrite=true).
     """
-    import asyncio as _asyncio
-    from google_calendar import get_credentials_for_user
-    from gmail_reader import search_replies_from
-    from reply_parser import parse_candidate_reply
+    from reply_scanner import scan_single_candidate
 
     if not is_admin_or_higher(user):
         raise HTTPException(status_code=403, detail='Only admins can scan replies')
@@ -517,88 +540,162 @@ async def scan_candidate_replies(candidate_id: str, user: dict = Depends(require
     cand = await db.candidates.find_one({'id': candidate_id}, {'_id': 0})
     if not cand:
         raise HTTPException(status_code=404, detail='Candidate not found')
-    if not cand.get('email'):
-        return {'ok': False, 'reason': 'no_email_on_candidate', 'replies': 0, 'updated': False}
 
-    fresh_user = await db.users.find_one({'id': user['id']}, {'_id': 0})
-    creds = await get_credentials_for_user(fresh_user or {})
-    if not creds:
-        return {'ok': False, 'reason': 'no_gmail_connected', 'replies': 0, 'updated': False}
+    return await scan_single_candidate(user, cand, overwrite=bool(overwrite),
+                                        lookback_days=90, max_replies=5)
 
-    # Ensure the token actually grants inbox-read scope. Older tokens (issued
-    # before gmail.readonly was added to SCOPES) will fail the Gmail API call
-    # silently — surface a clear error so the user knows to reconnect.
-    granted_scopes = (fresh_user.get('google_tokens', {}).get('scope') or '').split(' ')
-    if 'https://www.googleapis.com/auth/gmail.readonly' not in granted_scopes:
-        return {
-            'ok': False,
-            'reason': 'missing_readonly_scope',
-            'message': 'Reconnect your Gmail from My Integrations to grant inbox-read permission.',
-            'replies': 0,
-            'updated': False,
-        }
 
-    # Only scan the last 60 days for manual triggers
-    from datetime import datetime, timedelta, timezone as _tz
-    after_iso = (datetime.now(_tz.utc) - timedelta(days=60)).isoformat()
-    replies, gmail_error = await _asyncio.to_thread(search_replies_from, creds, cand['email'], after_iso, 20)
-    if gmail_error:
-        # Common case: token was refreshed but scope wasn't re-consented, or
-        # the account revoked our access from the Google Security page.
-        return {
-            'ok': False,
-            'reason': gmail_error,
-            'message': (
-                'Reconnect your Gmail from My Integrations to grant inbox-read permission.'
-                if gmail_error in ('insufficient_scope', 'invalid_token')
-                else f'Gmail API error: {gmail_error}'
-            ),
-            'replies': 0,
-            'updated': False,
-        }
+# ---------------------------------------------------------------------------
+# Bulk scan — "Refresh from Email" button. Runs `scan_single_candidate` across
+# every candidate matching the scope filter in a background task so the HTTP
+# response returns immediately with a task_id, and the frontend polls
+# /candidates/bulk-scan-replies/status for progress. Only ONE bulk task runs
+# globally at a time — a second POST while one is in-flight returns the
+# existing task info.
+# ---------------------------------------------------------------------------
 
-    best_notice, best_comp = None, None
-    for reply in replies:
-        body = reply.get('body_text') or reply.get('snippet') or ''
-        if not body.strip():
-            continue
-        try:
-            parsed = await parse_candidate_reply(body, session_label=f'manual-{cand["id"]}-{reply["id"]}')
-        except Exception:
-            continue
-        if parsed.get('notice_period') and not best_notice:
-            best_notice = parsed['notice_period']
-        if parsed.get('expected_compensation') and not best_comp:
-            best_comp = parsed['expected_compensation']
-        if best_notice and best_comp:
-            break
+# Module-level task registry. In-memory is fine — a fresh chat import restarts
+# the backend and any in-flight task at that moment is dead anyway. If the app
+# ever runs multi-worker we'd move this to Mongo, but supervisor runs a single
+# uvicorn worker so this is safe.
+_bulk_scan_task: dict = {
+    'task_id': None,
+    'status': 'idle',              # 'idle' | 'running' | 'done' | 'error'
+    'started_at': None,
+    'finished_at': None,
+    'total': 0,
+    'processed': 0,
+    'updated': 0,
+    'skipped_no_email': 0,
+    'skipped_gmail_error': 0,
+    'errors': [],                  # last few
+    'triggered_by': None,          # user id
+    'overwrite': False,
+    'only_missing': True,
+    'current_candidate_name': None,
+}
 
-    has_notice = bool(cand.get('notice_period'))
-    has_comp = bool(cand.get('expected_compensation'))
-    write: dict = {}
-    if best_notice and not has_notice:
-        write['notice_period'] = best_notice
-    if best_comp and not has_comp:
-        write['expected_compensation'] = best_comp
 
-    updated = False
-    if write:
-        write['updated_at'] = now_iso()
-        await db.candidates.update_one({'id': candidate_id}, {'$set': write})
-        summary_bits = []
-        if 'notice_period' in write:
-            summary_bits.append(f"notice period → {write['notice_period']}")
-        if 'expected_compensation' in write:
-            summary_bits.append(f"expected compensation → {write['expected_compensation']}")
-        summary = 'Auto-extracted from candidate reply: ' + '; '.join(summary_bits)
-        await log_activity(user, 'reply_extracted', summary, candidate_id=candidate_id)
-        await log_audit(user, 'reply_extracted', 'candidate', candidate_id, summary)
-        updated = True
+async def _run_bulk_scan(user: dict, overwrite: bool, only_missing: bool):
+    """Background driver for the bulk scan. Iterates candidates, calls
+    scan_single_candidate on each, updates the shared progress dict. Errors on
+    individual candidates are recorded and the loop continues — one bad row
+    must not abort the whole job."""
+    from reply_scanner import scan_single_candidate
+    global _bulk_scan_task
+    try:
+        # Build the candidate iterator per the scope choice. "only_missing" is
+        # the user's chosen default (Q2.c) — candidates that already have both
+        # notice_period AND expected_compensation are skipped, which cuts LLM
+        # cost dramatically without losing coverage of gaps.
+        query: dict = {}
+        if only_missing:
+            query = {
+                '$or': [
+                    {'notice_period': {'$in': [None, '']}},
+                    {'expected_compensation': {'$in': [None, '']}},
+                ],
+            }
+        cursor = db.candidates.find(query, {'_id': 0}).sort('updated_at', -1)
+        cand_list = await cursor.to_list(2000)  # hard cap so a runaway can't hang forever
+        _bulk_scan_task['total'] = len(cand_list)
+        logger.info('bulk scan starting: total=%d overwrite=%s only_missing=%s user=%s',
+                    len(cand_list), overwrite, only_missing, user.get('email'))
 
-    return {
-        'ok': True,
-        'replies': len(replies),
-        'updated': updated,
-        'extracted': {'notice_period': best_notice, 'expected_compensation': best_comp},
-        'candidate_had': {'notice_period': cand.get('notice_period'), 'expected_compensation': cand.get('expected_compensation')},
-    }
+        for cand in cand_list:
+            _bulk_scan_task['current_candidate_name'] = cand.get('name')
+            try:
+                if not cand.get('email'):
+                    _bulk_scan_task['skipped_no_email'] += 1
+                else:
+                    res = await scan_single_candidate(user, cand, overwrite=overwrite,
+                                                     lookback_days=90, max_replies=5)
+                    if res.get('reason') in ('missing_readonly_scope', 'no_gmail_connected'):
+                        # These are fatal for the whole job — no point continuing.
+                        _bulk_scan_task['errors'].append({
+                            'candidate_id': cand.get('id'),
+                            'candidate_name': cand.get('name'),
+                            'reason': res.get('reason'),
+                            'message': res.get('message'),
+                        })
+                        _bulk_scan_task['status'] = 'error'
+                        _bulk_scan_task['finished_at'] = _now_iso_local()
+                        return
+                    if res.get('reason') in ('insufficient_scope', 'invalid_token'):
+                        _bulk_scan_task['skipped_gmail_error'] += 1
+                    if res.get('updated'):
+                        _bulk_scan_task['updated'] += 1
+            except Exception as exc:
+                logger.exception('bulk scan candidate iteration failed for %s', cand.get('id'))
+                _bulk_scan_task['errors'].append({
+                    'candidate_id': cand.get('id'),
+                    'candidate_name': cand.get('name'),
+                    'reason': 'exception',
+                    'message': str(exc)[:200],
+                })
+                # keep only last 20 error entries so this dict doesn't grow forever
+                _bulk_scan_task['errors'] = _bulk_scan_task['errors'][-20:]
+            finally:
+                _bulk_scan_task['processed'] += 1
+
+        _bulk_scan_task['status'] = 'done'
+        _bulk_scan_task['finished_at'] = _now_iso_local()
+        _bulk_scan_task['current_candidate_name'] = None
+        logger.info('bulk scan finished: processed=%d updated=%d errors=%d',
+                    _bulk_scan_task['processed'], _bulk_scan_task['updated'],
+                    len(_bulk_scan_task['errors']))
+    except Exception:
+        logger.exception('bulk scan driver crashed')
+        _bulk_scan_task['status'] = 'error'
+        _bulk_scan_task['finished_at'] = _now_iso_local()
+
+
+def _now_iso_local():
+    from utils import now_iso as _n
+    return _n()
+
+
+@router.post('/bulk-scan-replies')
+async def bulk_scan_replies(overwrite: bool = False, only_missing: bool = True,
+                            user: dict = Depends(require_roles('admin', 'recruiter'))):
+    """Kick off a bulk email-scan across all candidates in scope. Returns the
+    task_id immediately; the frontend polls `/candidates/bulk-scan-replies/status`
+    for progress. Only one bulk task runs globally at a time — a second POST
+    while one is in-flight returns the in-flight task info (HTTP 200, not an error)."""
+    import asyncio as _asyncio
+
+    if not is_admin_or_higher(user):
+        raise HTTPException(status_code=403, detail='Only admins can bulk-scan replies')
+
+    global _bulk_scan_task
+    if _bulk_scan_task.get('status') == 'running':
+        return {'ok': True, 'already_running': True, **_bulk_scan_task}
+
+    _bulk_scan_task.clear()
+    _bulk_scan_task.update({
+        'task_id': new_id(),
+        'status': 'running',
+        'started_at': _now_iso_local(),
+        'finished_at': None,
+        'total': 0,
+        'processed': 0,
+        'updated': 0,
+        'skipped_no_email': 0,
+        'skipped_gmail_error': 0,
+        'errors': [],
+        'triggered_by': user['id'],
+        'overwrite': bool(overwrite),
+        'only_missing': bool(only_missing),
+        'current_candidate_name': None,
+    })
+
+    _asyncio.create_task(_run_bulk_scan(user, bool(overwrite), bool(only_missing)))
+    return {'ok': True, 'already_running': False, **_bulk_scan_task}
+
+
+@router.get('/bulk-scan-replies/status')
+async def bulk_scan_status(user: dict = Depends(require_roles('admin', 'recruiter'))):
+    """Poll endpoint for the frontend's progress toast. Returns the current
+    state of the global bulk task (or {status:'idle'} if none has run yet in
+    this backend lifetime)."""
+    return {**_bulk_scan_task}

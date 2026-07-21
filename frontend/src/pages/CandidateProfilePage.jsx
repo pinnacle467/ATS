@@ -7,6 +7,7 @@ import {
   CalendarDays,
   Clock,
   Download,
+  ExternalLink,
   FileText,
   GraduationCap,
   Mail,
@@ -15,6 +16,7 @@ import {
   Pencil,
   Phone,
   Save,
+  Sparkles,
   Star,
   Tag,
   Target,
@@ -30,6 +32,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
@@ -47,6 +50,88 @@ function fitScoreStyle(score) {
   if (score >= 75) return 'border-green-500 text-green-700 bg-green-50';
   if (score >= 50) return 'border-amber-500 text-amber-700 bg-amber-50';
   return 'border-red-500 text-red-700 bg-red-50';
+}
+
+// Confidence bucket → chip colour. Amber (medium) and red (low) explicitly
+// prompt the recruiter to verify before trusting the value.
+const CONFIDENCE_STYLE = {
+  high:   { chip: 'bg-emerald-100 text-emerald-800 border-emerald-300', dot: 'bg-emerald-500', label: 'High confidence' },
+  medium: { chip: 'bg-amber-100 text-amber-800 border-amber-300',       dot: 'bg-amber-500',   label: 'Medium confidence — please verify' },
+  low:    { chip: 'bg-rose-100 text-rose-800 border-rose-300',          dot: 'bg-rose-500',    label: 'Low confidence — please verify' },
+};
+
+/**
+ * Small chip shown next to notice_period / expected_compensation on the profile
+ * card. Renders only when the value was auto-extracted from Gmail (meta.source ===
+ * 'auto'). Clicking opens a popover with the extracted snippet, a link to the
+ * original Gmail thread, and prior history.
+ */
+function AutoExtractedBadge({ meta, history }) {
+  if (!meta || meta.source !== 'auto') return null;
+  const conf = meta.confidence || 'low';
+  const style = CONFIDENCE_STYLE[conf] || CONFIDENCE_STYLE.low;
+  const extractedAt = meta.extracted_at ? new Date(meta.extracted_at) : null;
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className={`inline-flex items-center gap-1 rounded-full border ${style.chip} px-1.5 py-px text-[10px] font-medium hover:opacity-80 transition-opacity`}
+          title={style.label}
+          data-testid="auto-extracted-badge"
+        >
+          <Sparkles className="h-2.5 w-2.5" />
+          <span>Auto</span>
+          <span className={`h-1.5 w-1.5 rounded-full ${style.dot}`} />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent side="top" className="w-80 text-xs space-y-2" data-testid="auto-extracted-popover">
+        <div className="flex items-center justify-between">
+          <p className="font-semibold text-sm">Auto-extracted from email</p>
+          <Badge variant="outline" className={`${style.chip} text-[10px]`}>{style.label}</Badge>
+        </div>
+        {meta.snippet ? (
+          <div>
+            <p className="text-muted-foreground mb-0.5">Source snippet:</p>
+            <p className="italic border-l-2 border-border pl-2 py-0.5 text-slate-700">&ldquo;{meta.snippet}&rdquo;</p>
+          </div>
+        ) : (
+          <p className="text-muted-foreground italic">No verbatim snippet returned by extractor.</p>
+        )}
+        {meta.source_subject && (
+          <p><span className="text-muted-foreground">Email subject:</span> {meta.source_subject}</p>
+        )}
+        {extractedAt && (
+          <p><span className="text-muted-foreground">Extracted:</span> {extractedAt.toLocaleString()}</p>
+        )}
+        {meta.source_thread_url && (
+          <a
+            href={meta.source_thread_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-primary hover:underline"
+          >
+            <ExternalLink className="h-3 w-3" /> Open in Gmail
+          </a>
+        )}
+        {Array.isArray(history) && history.length > 1 && (
+          <div className="pt-2 border-t">
+            <p className="text-muted-foreground mb-1">History (last {history.length}):</p>
+            <ul className="space-y-1">
+              {history.map((h, idx) => (
+                <li key={`${h.extracted_at || idx}`} className="flex justify-between gap-2">
+                  <span className="truncate">{h.value || <em className="text-muted-foreground">null</em>}</span>
+                  <span className="text-muted-foreground shrink-0">
+                    {h.extracted_at ? new Date(h.extracted_at).toLocaleDateString() : '—'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 export default function CandidateProfilePage() {
@@ -339,8 +424,8 @@ export default function CandidateProfilePage() {
       } else if (r.data?.updated) {
         toast.success('Extracted candidate reply — details updated');
         load();
-      } else if (r.data?.replies > 0) {
-        toast.message(`Scanned ${r.data.replies} repl${r.data.replies === 1 ? 'y' : 'ies'} — nothing new to extract`);
+      } else if (r.data?.replies_scanned > 0) {
+        toast.message(`Scanned ${r.data.replies_scanned} repl${r.data.replies_scanned === 1 ? 'y' : 'ies'} — nothing new to extract`);
       } else {
         toast.message('No replies found in your inbox yet');
       }
@@ -549,11 +634,13 @@ export default function CandidateProfilePage() {
                   <div className="flex items-center gap-2" data-testid="candidate-notice-period">
                     <Clock className="h-4 w-4 text-muted-foreground" />
                     Notice Period: {cand.notice_period || <span className="text-muted-foreground">Not specified</span>}
+                    <AutoExtractedBadge meta={cand.notice_period_meta} history={cand.notice_period_history} />
                   </div>
                   {isAdminPlus && (
                     <div className="flex items-center gap-2" data-testid="candidate-expected-compensation">
                       <Wallet className="h-4 w-4 text-muted-foreground" />
                       Expected Comp.: {cand.expected_compensation || <span className="text-muted-foreground">Not specified</span>}
+                      <AutoExtractedBadge meta={cand.expected_compensation_meta} history={cand.expected_compensation_history} />
                     </div>
                   )}
                   <div className="flex items-center gap-2 flex-wrap">

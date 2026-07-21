@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Download, FileSpreadsheet, FileText, Kanban, List, Mail, Search, UserPlus, X } from 'lucide-react';
+import { Download, FileSpreadsheet, FileText, Kanban, List, Loader2, Mail, RefreshCw, Search, Sparkles, UserPlus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -104,6 +104,8 @@ export default function CandidatesPage() {
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState('created_at'); // 'created_at' | 'fit_score' | 'name'
   const [bulkDialog, setBulkDialog] = useState(null); // {action}
+  // Bulk "Refresh from Email" (auto-extract notice_period + expected_ctc) state
+  const [bulkScanTask, setBulkScanTask] = useState(null); // full status dict from backend
   const [bulkValue, setBulkValue] = useState('');
   const [bulkReason, setBulkReason] = useState('');
   const [bulkRejectCategory, setBulkRejectCategory] = useState('');
@@ -113,7 +115,78 @@ export default function CandidatesPage() {
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
 
   const isRecruiter = ['super_admin', 'admin', 'recruiter'].includes(user?.role);
+  const isAdminPlus = ['super_admin', 'admin'].includes(user?.role);
   const limit = view === 'kanban' ? 500 : 25;
+
+  // ---- Bulk "Refresh from Email" — kicks off backend task, polls for progress ----
+  const bulkScanRunning = bulkScanTask?.status === 'running';
+
+  const pollBulkScanStatus = useCallback(async () => {
+    try {
+      const r = await api.get('/candidates/bulk-scan-replies/status');
+      setBulkScanTask(r.data);
+      return r.data;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  // Poll every 2s while the task is running so the toast/status stays live.
+  useEffect(() => {
+    if (!bulkScanRunning) return undefined;
+    const t = setInterval(async () => {
+      const s = await pollBulkScanStatus();
+      if (!s || s.status !== 'running') {
+        clearInterval(t);
+        // Refresh the candidates list so the new notice_period / expected_compensation
+        // fields (if any were extracted) show up right away.
+        if (s?.updated > 0) load();
+        if (s?.status === 'done') {
+          toast.success(`Refreshed ${s.processed} candidates from Gmail — updated ${s.updated}`, { duration: 8000 });
+        } else if (s?.status === 'error') {
+          const err = (s.errors || [])[0];
+          const reason = err?.reason || 'error';
+          if (reason === 'no_gmail_connected' || reason === 'missing_readonly_scope') {
+            toast.error('Connect your Gmail (with inbox-read scope) first — none of the candidates could be scanned.', {
+              action: { label: 'Open Integrations', onClick: () => navigate('/my-integrations') },
+              duration: 12000,
+            });
+          } else {
+            toast.error(`Refresh from Email failed: ${err?.message || reason}`, { duration: 8000 });
+          }
+        }
+      }
+    }, 2000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bulkScanRunning]);
+
+  const startBulkScan = async () => {
+    // If nothing is running, ask for confirmation. Bulk scan uses LLM credits
+    // and touches the recruiter's Gmail, so make the trigger deliberate.
+    if (!window.confirm(
+      'Refresh notice period and expected compensation for all candidates missing either field, using your connected Gmail?\n\n'
+      + 'This may take a few minutes and uses LLM credits.'
+    )) return;
+    try {
+      const r = await api.post('/candidates/bulk-scan-replies', null, { params: { only_missing: true, overwrite: false } });
+      setBulkScanTask(r.data);
+      if (r.data?.already_running) {
+        toast.message('A refresh is already running');
+      } else {
+        toast.info(`Refresh started — scanning up to ${r.data?.total || 'all'} candidates`);
+      }
+    } catch (e) {
+      toast.error(errMsg(e, 'Could not start refresh'));
+    }
+  };
+
+  // On mount, fetch the current bulk-scan status once so if the user reloads
+  // while a task is still running, the toast/badge picks it right back up.
+  useEffect(() => {
+    if (!isAdminPlus) return;
+    pollBulkScanStatus();
+  }, [isAdminPlus, pollBulkScanStatus]);
 
   useEffect(() => {
     Promise.all([api.get('/jobs'), api.get('/users'), api.get('/tags'), api.get('/settings/pipeline')])
@@ -285,6 +358,19 @@ export default function CandidatesPage() {
               <Button variant="outline" onClick={() => navigate('/candidates/import')} data-testid="candidates-import-button">
                 <FileSpreadsheet className="h-4 w-4 mr-1" /> Import from Excel/CSV
               </Button>
+              {isAdminPlus && (
+                <Button
+                  variant="outline"
+                  onClick={startBulkScan}
+                  disabled={bulkScanRunning}
+                  data-testid="candidates-bulk-scan-button"
+                  title="Auto-extract notice period and expected compensation from your connected Gmail for all candidates missing either field."
+                >
+                  {bulkScanRunning
+                    ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Refreshing {bulkScanTask?.processed || 0}/{bulkScanTask?.total || '…'}</>
+                    : <><Sparkles className="h-4 w-4 mr-1" /> Refresh from Email</>}
+                </Button>
+              )}
               <Button onClick={() => navigate('/candidates/new')} data-testid="candidates-add-button">
                 <UserPlus className="h-4 w-4 mr-1" /> Add Candidate
               </Button>

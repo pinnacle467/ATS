@@ -23,16 +23,34 @@ Schema:
 {
   "notice_period": string|null,
   "expected_compensation": string|null,
-  "confidence": {"notice_period": number, "expected_compensation": number}
+  "confidence": {"notice_period": number, "expected_compensation": number},
+  "source_snippet": {"notice_period": string|null, "expected_compensation": string|null}
 }
 
 Rules:
-- notice_period: how soon the candidate can join. Return their own phrasing when possible (e.g. "60 days", "Immediate", "1 month", "Serving notice, LWD 15 Aug"). Return null if the reply does not mention availability/notice period.
-- expected_compensation: their expected salary/CTC/compensation. Return their own phrasing including currency and units (e.g. "22 LPA", "$130k base + equity", "18-20 LPA fixed"). Return null if the reply does not mention any compensation number.
+- notice_period: how soon the candidate can join. Return their own phrasing when possible (e.g. "60 days", "Immediate", "1 month", "Serving notice, LWD 15 Aug"). If the candidate stated a date rather than a duration (e.g. "I can join March 15"), still return the duration/phrasing they used. Return null if the reply does not mention availability/notice period.
+- expected_compensation: their expected salary/CTC/compensation. Return their own phrasing including currency and units (e.g. "22 LPA", "$130k base + equity", "18-20 LPA fixed"). Never convert currencies. Return null if the reply does not mention any compensation number.
+- If there is negotiation back-and-forth in the thread, prefer the candidate's FINAL / most-recent explicit statement, not any recruiter counter-offer.
 - Confidence values are 0.0-1.0 for how certain you are the field was explicitly stated (not inferred). Use 0.0 for null fields.
-- NEVER guess. NEVER hallucinate. If unsure, return null.
+- source_snippet.notice_period / source_snippet.expected_compensation: the EXACT verbatim sentence from the email that contains the value. This is shown to the recruiter for verification. Return null when the corresponding value is null. Copy the sentence character-for-character — do not paraphrase.
+- NEVER guess. NEVER hallucinate. If unsure, return null (both the value AND the snippet).
 - If the reply is a signature-only / out-of-office / unrelated message, return both fields as null.
 - Output raw JSON only."""
+
+
+def bucket_confidence(x) -> str:
+    """Normalise the LLM's 0.0-1.0 confidence float into the "high"/"medium"/"low"
+    bucket that the UI badge colouring uses. `None` / non-numeric → 'low' (safe default —
+    we'd rather flag for verification than mislead)."""
+    try:
+        v = float(x)
+    except (TypeError, ValueError):
+        return 'low'
+    if v >= 0.75:
+        return 'high'
+    if v >= 0.45:
+        return 'medium'
+    return 'low'
 
 
 def _strip_fences(raw: str) -> str:
@@ -43,7 +61,7 @@ def _strip_fences(raw: str) -> str:
     return raw
 
 
-EMPTY = {'notice_period': None, 'expected_compensation': None, 'confidence': {}}
+EMPTY = {'notice_period': None, 'expected_compensation': None, 'confidence': {}, 'source_snippet': {}}
 
 
 async def parse_candidate_reply(text: str, session_label: str) -> dict:
