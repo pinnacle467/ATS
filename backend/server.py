@@ -24,7 +24,7 @@ import routes_notifications
 import routes_imports
 import routes_calendar
 from reminder_scheduler import reminder_loop
-from snapshot_scheduler import snapshot_loop
+from snapshot_scheduler import install_pre_commit_hook
 from reply_scanner import reply_scan_loop
 from email_templates import seed_default_templates
 import routes_career
@@ -87,9 +87,26 @@ async def startup():
     if any(rbac_counts.values()):
         logger.info(f'RBAC migration applied: {rbac_counts}')
     asyncio.create_task(reminder_loop())
-    asyncio.create_task(snapshot_loop())
+    # Snapshot durability: instead of a periodic timer, we install a git
+    # pre-commit hook that dumps MongoDB → data_seed/snapshot.json
+    # synchronously before every commit (including Emergent's "Save to
+    # GitHub"). This guarantees pushed snapshots are never stale.
+    try:
+        hook_result = install_pre_commit_hook()
+        if hook_result.get('installed'):
+            logger.info(
+                'pre-commit snapshot hook installed at %s (wrote_file=%s) — every '
+                'git commit will refresh data_seed/snapshot.json synchronously',
+                hook_result.get('path'), hook_result.get('wrote_file'),
+            )
+        else:
+            logger.warning(
+                'pre-commit snapshot hook NOT installed: %s',
+                hook_result.get('reason'),
+            )
+    except Exception:
+        logger.exception('failed to install pre-commit snapshot hook')
     asyncio.create_task(reply_scan_loop())
-    logger.info('snapshot_loop scheduled — data_seed/snapshot.json will be refreshed every 5 minutes')
     logger.info('reply_scan_loop scheduled — scanning candidate email replies every 5 minutes')
 
 

@@ -13,10 +13,11 @@ POC script: /app/tests/poc_resume_parse.py (all tests passed).
 
 The user's real data (candidates, resumes, jobs, JDs, fit scores, notes, activities, audit log, users) MUST survive every chat import. If any of the steps below are skipped, the new chat will boot with only the synthetic demo seed and every real record will be lost.
 
-### How the durability chain works
-1. Every 5 minutes, the running backend calls `python /app/scripts/dump_snapshot.py`, which writes the full live MongoDB `sprout_ats` database to `/app/backend/data_seed/snapshot.json` atomically. The loop is registered in `backend/server.py`'s startup handler (`snapshot_scheduler.snapshot_loop`).
-2. When the user commits + pushes via Emergent's **Save to GitHub** feature, `snapshot.json` goes into the repo (it is NOT in `.gitignore`).
-3. On the next chat import, the fresh chat pulls the repo (including the latest snapshot). MongoDB starts empty. Backend startup calls `seed.seed_if_empty()` which sees the empty `users` collection and calls `_restore_snapshot()`, which reads `backend/data_seed/snapshot.json` and re-inserts every collection.
+### How the durability chain works (as of July 2026 — hook-based, no periodic timer)
+1. A git `pre-commit` hook at `.git/hooks/pre-commit` (source of truth: `/app/scripts/pre_commit_snapshot.sh`) runs `python /app/scripts/dump_snapshot.py` **synchronously** before every commit. The dump writes the full live MongoDB `sprout_ats` database to `/app/backend/data_seed/snapshot.json` atomically (tmp file + rename) and the hook then `git add`s that file so it lands in the same commit.
+2. When the user commits + pushes via Emergent's **Save to GitHub** feature, the hook fires, `snapshot.json` is refreshed against the live DB, and the commit that goes out contains data exactly as it was at the moment of the click (no 5-minute-stale-snapshot race). `snapshot.json` is NOT in `.gitignore`.
+3. On the next chat import, the fresh chat pulls the repo (including the freshly-written snapshot). MongoDB starts empty. Backend startup calls `seed.seed_if_empty()` which sees the empty `users` collection and calls `_restore_snapshot()`, which reads `backend/data_seed/snapshot.json` and re-inserts every collection.
+4. Backend startup ALSO calls `snapshot_scheduler.install_pre_commit_hook()`, which copies `scripts/pre_commit_snapshot.sh` into `.git/hooks/pre-commit` and marks it executable. `.git/hooks/*` is not tracked by git, so this re-install on every boot is what makes the durability chain survive fresh chat imports.
 
 ### Non-negotiable steps for any main agent working on this build in a new chat
 
@@ -25,21 +26,22 @@ The following MUST be done, in order, at the very start of every new chat import
 - **Step 1 — Recreate `.env` files** (they are gitignored). Values are protected but standard:
   - `/app/backend/.env` must contain: `MONGO_URL="mongodb://localhost:27017"`, `DB_NAME="sprout_ats"`, `CORS_ORIGINS="*"`, `JWT_SECRET=<any strong value>`, `EMERGENT_LLM_KEY=<universal key from emergent_integrations_manager>`, `APP_BASE_URL=<current preview URL>`, `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` (currently `45396856275-...apps.googleusercontent.com` / `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` — ask user to reconfirm).
   - `/app/frontend/.env` must contain: `REACT_APP_BACKEND_URL=<current preview URL>`, `WDS_SOCKET_PORT=443`.
-- **Step 2 — Install deps**: `pip install -r /app/backend/requirements.txt --extra-index-url https://d33sy5i8bnduwe.cloudfront.net/simple/` and `cd /app/frontend && yarn install`.
+- **Step 2 — Install deps**: `pip install -r /app/backend/requirements.txt --extra-index-url https://d33sy5i8bnduwe.cloudfront.net/simple/` and `cd /app/frontend && yarn install`. Note: `emergentintegrations` and `litellm` both resolve to the same wheel; if pip complains about a conflict, install with `grep -v "^litellm" requirements.txt > /tmp/req.txt && pip install -r /tmp/req.txt --extra-index-url ...`
 - **Step 3 — DO NOT run `mongorestore` or delete/overwrite the `sprout_ats` database.** The backend's startup will auto-restore from `/app/backend/data_seed/snapshot.json` via `seed.seed_if_empty()`. If MongoDB already has data from a prior boot in this chat, seed does nothing and the data stays.
-- **Step 4 — Restart supervisor**: `sudo supervisorctl restart backend frontend`. Confirm the log contains `snapshot_loop scheduled — data_seed/snapshot.json will be refreshed every 5 minutes`.
-- **Step 5 — Verify data restored**: `mongosh sprout_ats --quiet --eval 'print(db.candidates.countDocuments({}))'` — expect ≥ 136 (as of July 2026). Also verify at least one candidate has a `fit_score` and one job has `jd_text`.
-- **Step 6 — Verify auto-snapshot is alive**: after ~6 minutes of runtime, `stat -c '%Y' /app/backend/data_seed/snapshot.json` should show a fresh mtime. If not, check `/var/log/supervisor/backend.err.log` for `snapshot_dump failed` lines.
+- **Step 4 — Restart supervisor**: `sudo supervisorctl restart backend frontend`. Confirm the log contains `pre-commit snapshot hook installed at /app/.git/hooks/pre-commit`. It must NOT contain `snapshot_loop scheduled` — that log line belonged to the old periodic-timer design and was removed in July 2026.
+- **Step 5 — Verify data restored**: `mongosh sprout_ats --quiet --eval 'print(db.candidates.countDocuments({}))'` — expect ≥ 150 (as of July 2026). Also verify at least one candidate has a `fit_score` and one job has `jd_text`.
+- **Step 6 — Verify the hook is armed**: `ls -la /app/.git/hooks/pre-commit` — it must exist, be executable, and contain the string `Sprout ATS` in its header. To smoke-test end-to-end: `cd /app && echo "# smoke" >> README.md && git add README.md && git commit -m "hook smoke"` — the commit output must contain `[snapshot] ✓ fresh snapshot written`, and `git show --stat HEAD` must list `backend/data_seed/snapshot.json`. Then `git reset --soft HEAD~1 && git restore --staged README.md && git checkout -- README.md` to undo the smoke commit.
 
 ### Non-negotiable steps for the USER before starting a new chat
-- **Click "Save to GitHub" in the Emergent chat input BEFORE starting the new chat.** This pushes the latest `snapshot.json` to the repo. Without this push, the new chat pulls a stale snapshot and any data added since the last push is lost.
-- If they haven't clicked Save to GitHub in a while, the main agent should remind them proactively (`snapshot.json` mtime older than an hour is a good trigger).
+- **Click "Save to GitHub" in the Emergent chat input BEFORE starting the new chat.** The pre-commit hook guarantees the pushed snapshot is fresh at the moment of the click — but the click itself is still required. Without the push, the new chat pulls the older snapshot from the repo and any un-pushed data is lost.
+- Unlike the old design, the user no longer has to worry about the 5-minute snapshot lag. Any data written up to the second before the click is in the push.
 
 ### Things that MUST NOT be done — silent data loss risks
 - ❌ Never add `snapshot.json` to `.gitignore`.
 - ❌ Never delete `/app/backend/data_seed/snapshot.json`.
-- ❌ Never disable / comment out the `snapshot_loop` task in `server.py`.
-- ❌ Never call `db.dropDatabase()` on `sprout_ats` without first taking a fresh snapshot.
+- ❌ Never delete `/app/scripts/pre_commit_snapshot.sh`, and never remove the `install_pre_commit_hook()` call from `server.py`'s startup handler — without it, `.git/hooks/pre-commit` doesn't survive a fresh chat and pushes will contain a stale snapshot.
+- ❌ Never re-introduce a periodic `snapshot_loop` — the whole point of the hook design is to guarantee freshness at click-time, not "at most 5 minutes stale".
+- ❌ Never call `db.dropDatabase()` on `sprout_ats` without first taking a fresh snapshot (`python /app/scripts/dump_snapshot.py`).
 - ❌ Never run `import_from_remote.py` on an already-populated db — it does a `delete_many({})` on every collection first (design assumption: it's a one-off migration from a remote build, not a refresh).
 
 ---
