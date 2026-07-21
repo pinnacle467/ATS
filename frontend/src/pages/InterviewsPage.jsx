@@ -73,6 +73,7 @@ export default function InterviewsPage() {
   const [calBusy, setCalBusy] = useState(false);
   const [syncBusy, setSyncBusy] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
+  const [externalEvents, setExternalEvents] = useState([]); // read-only overlay from Google Calendar
 
   const isRecruiter = ['super_admin', 'admin', 'recruiter'].includes(user?.role);
 
@@ -119,6 +120,23 @@ export default function InterviewsPage() {
       .then(([u, j, k]) => { setUsers(u.data); setJobs(j.data); setKits(k.data); })
       .catch(() => {});
   }, [load]);
+
+  // Read-only overlay of Google Calendar events on the week/day grid. We keep
+  // the fetch narrow (only the visible window ± 1 day) so nothing extra is
+  // pulled if the user is stuck on List view or hasn't connected calendar.
+  useEffect(() => {
+    if (!calStatus?.connected) { setExternalEvents([]); return; }
+    if (view !== 'week' && view !== 'day') { setExternalEvents([]); return; }
+    let cancelled = false;
+    const from = view === 'week' ? addDays(weekStart, -1) : addDays(dayFocus, -1);
+    const to = view === 'week' ? addDays(weekStart, 8) : addDays(dayFocus, 2);
+    api.get('/calendar/external-events', {
+      params: { time_min: from.toISOString(), time_max: to.toISOString() },
+    })
+      .then((r) => { if (!cancelled) setExternalEvents(r.data?.events || []); })
+      .catch(() => { if (!cancelled) setExternalEvents([]); });
+    return () => { cancelled = true; };
+  }, [calStatus?.connected, view, weekStart, dayFocus]);
 
   const openDetail = async (iv) => {
     setDetailIv(iv);
@@ -337,6 +355,7 @@ export default function InterviewsPage() {
     function DayColumn({ day }) {
       const isToday = isSameDayInTz(new Date(), day, displayTz);
       const dayIvs = visibleInterviews.filter((iv) => isSameDayInTz(new Date(iv.scheduled_at), day, displayTz));
+      const dayExts = externalEvents.filter((ev) => !ev.all_day && isSameDayInTz(new Date(ev.start), day, displayTz));
       // Now line
       const nowHours = tzHours(new Date(), displayTz);
       const nowTop = (nowHours - GRID_START_HOUR) * HOUR_ROW_PX;
@@ -351,6 +370,8 @@ export default function InterviewsPage() {
               <div className="h-px bg-rose-500 relative"><span className="absolute -left-1 -top-1 w-2 h-2 rounded-full bg-rose-500" /></div>
             </div>
           )}
+          {/* External Google Calendar events render UNDER interview pills (lower z) so ATS interviews always win the visual layer */}
+          {dayExts.map((ev) => <ExtEventBlock key={`ext-${ev.id}`} ev={ev} />)}
           {dayIvs.map((iv) => <IvBlock key={iv.id} iv={iv} />)}
         </div>
       );
@@ -360,6 +381,7 @@ export default function InterviewsPage() {
   const DayGrid = () => {
     const hours = Array.from({ length: GRID_END_HOUR - GRID_START_HOUR + 1 }, (_, i) => GRID_START_HOUR + i);
     const dayIvs = visibleInterviews.filter((iv) => isSameDayInTz(new Date(iv.scheduled_at), dayFocus, displayTz));
+    const dayExts = externalEvents.filter((ev) => !ev.all_day && isSameDayInTz(new Date(ev.start), dayFocus, displayTz));
     const nowHours = tzHours(new Date(), displayTz);
     const isToday = isSameDayInTz(new Date(), dayFocus, displayTz);
     const nowTop = (nowHours - GRID_START_HOUR) * HOUR_ROW_PX;
@@ -390,10 +412,49 @@ export default function InterviewsPage() {
                 <div className="h-px bg-rose-500 relative"><span className="absolute -left-1 -top-1 w-2 h-2 rounded-full bg-rose-500" /></div>
               </div>
             )}
+            {dayExts.map((ev) => <ExtEventBlock key={`ext-${ev.id}`} ev={ev} />)}
             {dayIvs.map((iv) => <IvBlock key={iv.id} iv={iv} wide />)}
           </div>
         </div>
       </div>
+    );
+  };
+
+  // Grey read-only pill for events pulled from the user's Google Calendar
+  // that aren't ATS interviews (1:1s, standups, holds, etc.). Rendered next
+  // to IvBlock inside the same day column so the user has a single-glance
+  // view of their true availability. Clicking opens the event in Google Calendar.
+  const ExtEventBlock = ({ ev }) => {
+    // Skip all-day events on the timed grid — they'd swallow the whole column.
+    if (ev.all_day) return null;
+    const startDate = new Date(ev.start);
+    const endDate = new Date(ev.end);
+    const start = tzHours(startDate, displayTz);
+    if (start < GRID_START_HOUR || start > GRID_END_HOUR) return null;
+    const durationMin = Math.max(15, (endDate - startDate) / 60000);
+    const top = Math.max(0, (start - GRID_START_HOUR) * HOUR_ROW_PX);
+    const height = Math.max(24, (durationMin / 60) * HOUR_ROW_PX - 2);
+    // Tentative / declined events dim further to reduce visual noise.
+    const dim = ev.status_response === 'declined' || ev.status_response === 'tentative';
+    const soloStyle = ev.is_solo
+      ? 'bg-slate-100/70 border-slate-300 text-slate-600'
+      : 'bg-slate-200/70 border-slate-400 text-slate-700';
+    return (
+      <a
+        href={ev.html_link || '#'}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={`absolute left-0.5 right-0.5 rounded-md border border-dashed ${soloStyle} ${dim ? 'opacity-50 line-through' : ''} px-1.5 py-1 text-left overflow-hidden hover:opacity-100 hover:shadow-md hover:z-10 transition-all block`}
+        style={{ top, height }}
+        title={`${ev.summary} — ${formatInTz(startDate, displayTz, 'p')} to ${formatInTz(endDate, displayTz, 'p')}${ev.attendee_count > 0 ? ` · ${ev.attendee_count} attendee${ev.attendee_count === 1 ? '' : 's'}` : ' · solo'} (external — click to open in Google Calendar)`}
+        data-testid={`external-event-${ev.id}`}
+      >
+        <div className="flex items-center gap-1 min-w-0">
+          <span className="text-[8px] px-1 py-px rounded font-medium shrink-0 bg-slate-300/60 text-slate-700 uppercase tracking-wide">Ext</span>
+        </div>
+        <p className="text-[11px] font-medium truncate mt-0.5">{ev.summary}</p>
+        <p className="text-[10px] opacity-70 truncate">{formatInTz(startDate, displayTz, 'p')}{ev.attendee_count > 0 ? ` · ${ev.attendee_count}` : ''}</p>
+      </a>
     );
   };
 
@@ -723,7 +784,7 @@ export default function InterviewsPage() {
               {calStatus.connected ? (
                 <span data-testid="google-calendar-connected-label">
                   Google Calendar connected as <span className="font-medium">{calStatus.email}</span>
-                  {isRecruiter ? ' — interviews you schedule sync automatically.' : ' — recruiters can see your real availability when scheduling.'}
+                  {isRecruiter ? ' — interviews you schedule sync automatically, and your other calendar events show as grey blocks on the grid.' : ' — recruiters can see your real availability, and your other calendar events show as grey blocks on the grid.'}
                 </span>
               ) : (
                 <span className="text-muted-foreground">

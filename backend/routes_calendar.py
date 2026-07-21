@@ -96,6 +96,127 @@ async def calendar_disconnect(user: dict = Depends(get_current_user)):
     return {'ok': True}
 
 
+@router.get('/calendar/external-events')
+async def list_external_events(
+    time_min: str,
+    time_max: str,
+    user: dict = Depends(get_current_user),
+):
+    """Read-only overlay: return the caller's Google Calendar events within
+    the given ISO window (`time_min` / `time_max`, both required, RFC3339 e.g.
+    `2026-07-21T00:00:00Z`) so the frontend can render them next to real ATS
+    interviews on the week/day grid.
+
+    - Events that have already been imported as ATS interviews (matched by
+      `google_event_id` on interviews) are stripped out — the ATS row is the
+      canonical one for those.
+    - All-day events, cancelled events, and events with no attendees other
+      than the caller are still returned (a solo focus block is still useful
+      "busy" context) but flagged so the frontend can style them differently.
+    - Response is compact: no attendee PII beyond a count.
+    - If the user has not connected Google Calendar this returns
+      {"connected": false, "events": []} instead of a 400 — so the frontend
+      can call this unconditionally on load without needing to check
+      `/calendar/status` first.
+    """
+    user_doc = await db.users.find_one({'id': user['id']})
+    if not user_doc:
+        raise HTTPException(status_code=404, detail='User not found')
+    from google_calendar import get_credentials_for_user  # local import — cheap and keeps top-of-file tidy
+    creds = await get_credentials_for_user(user_doc)
+    if not creds:
+        return {'connected': False, 'events': []}
+
+    # Basic sanity: reject wildly-wrong ranges. A month view is 42 days max.
+    try:
+        _tmin = datetime.fromisoformat(time_min.replace('Z', '+00:00'))
+        _tmax = datetime.fromisoformat(time_max.replace('Z', '+00:00'))
+    except ValueError:
+        raise HTTPException(status_code=422, detail='time_min and time_max must be ISO-8601')
+    if _tmax <= _tmin:
+        raise HTTPException(status_code=422, detail='time_max must be after time_min')
+    if (_tmax - _tmin).days > 62:
+        raise HTTPException(status_code=422, detail='Requested window is too large (max 62 days)')
+
+    try:
+        events = list_events(creds, time_min_iso=time_min, time_max_iso=time_max, max_results=500)
+    except Exception as exc:
+        logger.exception('external-events: list_events failed')
+        exc_text = str(exc).lower()
+        if 'invalid_client' in exc_text or 'invalid_grant' in exc_text or 'refresherror' in exc_text:
+            raise HTTPException(status_code=400, detail='Google Calendar authorization expired — please reconnect.')
+        raise HTTPException(status_code=400, detail='Could not read your Google Calendar.')
+
+    # Which google_event_ids are already ATS interviews? Filter them out so the
+    # calendar grid doesn't show the same event twice (once as blue interview
+    # pill, once as grey external pill).
+    ats_event_ids: set[str] = set()
+    async for iv in db.interviews.find({'google_event_id': {'$exists': True, '$ne': None}}, {'_id': 0, 'google_event_id': 1}):
+        gid = iv.get('google_event_id')
+        if gid:
+            ats_event_ids.add(gid)
+
+    out: list[dict] = []
+    my_email = (user_doc.get('email') or '').strip().lower()
+    calendar_email = (user_doc.get('google_calendar_email') or '').strip().lower()
+    for ev in events:
+        if ev.get('status') == 'cancelled':
+            continue
+        eid = ev.get('id')
+        if eid and eid in ats_event_ids:
+            continue
+
+        start_obj = ev.get('start') or {}
+        end_obj = ev.get('end') or {}
+        all_day = bool(start_obj.get('date') and not start_obj.get('dateTime'))
+        start_iso = start_obj.get('dateTime') or start_obj.get('date')
+        end_iso = end_obj.get('dateTime') or end_obj.get('date')
+        if not start_iso or not end_iso:
+            continue
+
+        attendees = ev.get('attendees') or []
+        # Filter out the caller themselves and resource rooms (email endswith .resource.calendar.google.com)
+        real_attendees = [a for a in attendees
+                          if not a.get('resource')
+                          and (a.get('email') or '').strip().lower() not in {my_email, calendar_email, ''}]
+
+        # Video link resolution mirrors the sync-interviews logic.
+        video_link = ev.get('hangoutLink') or ''
+        if not video_link:
+            for ep in (ev.get('conferenceData', {}).get('entryPoints') or []):
+                if ep.get('entryPointType') == 'video' and ep.get('uri'):
+                    video_link = ep['uri']
+                    break
+
+        # "Am I the only person here?" — used by the frontend to style solo
+        # focus blocks / self-reminders more subtly than real multi-person meetings.
+        is_solo = len(real_attendees) == 0
+
+        out.append({
+            'id': eid,
+            'summary': ev.get('summary') or '(no title)',
+            'start': start_iso,
+            'end': end_iso,
+            'all_day': all_day,
+            'timezone': start_obj.get('timeZone'),
+            'html_link': ev.get('htmlLink'),
+            'location': ev.get('location') or None,
+            'video_link': video_link or None,
+            'attendee_count': len(real_attendees),
+            'is_solo': is_solo,
+            'organizer_email': (ev.get('organizer') or {}).get('email'),
+            'is_organizer': bool((ev.get('organizer') or {}).get('self')),
+            'status_response': next((a.get('responseStatus') for a in attendees if a.get('self')), None),
+        })
+
+    return {
+        'connected': True,
+        'calendar_email': user_doc.get('google_calendar_email'),
+        'events': out,
+        'range': {'from': time_min, 'to': time_max},
+    }
+
+
 @router.post('/calendar/sync-interviews')
 async def sync_interviews_from_calendar(
     days_back: int = 14,
