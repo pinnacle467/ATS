@@ -5,6 +5,7 @@ import {
   Briefcase,
   Building2,
   CalendarDays,
+  ChevronDown,
   Clock,
   Download,
   ExternalLink,
@@ -15,6 +16,7 @@ import {
   Maximize2,
   Pencil,
   Phone,
+  RefreshCw,
   Save,
   Sparkles,
   Star,
@@ -33,6 +35,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
@@ -400,10 +403,20 @@ export default function CandidateProfilePage() {
     }
   };
 
-  const scanReplies = async () => {
+  const scanReplies = async (overwrite = false) => {
+    // If the caller is forcing overwrite, confirm — this can destroy a recruiter's
+    // manual edits (notice_period + expected_compensation) if the LLM extracts
+    // different values from Gmail.
+    if (overwrite) {
+      const ok = window.confirm(
+        'Force re-scan Gmail and overwrite any manually entered Notice Period and Expected Compensation for this candidate?\n\n'
+        + 'This cannot be undone (previous values are kept in history, but the visible fields will be replaced).'
+      );
+      if (!ok) return;
+    }
     setScanningReplies(true);
     try {
-      const r = await api.post(`/candidates/${id}/scan-replies`);
+      const r = await api.post(`/candidates/${id}/scan-replies`, null, { params: { overwrite } });
       if (r.data?.ok === false) {
         const reason = r.data.reason;
         if (reason === 'no_gmail_connected') {
@@ -422,7 +435,7 @@ export default function CandidateProfilePage() {
           toast.error(r.data.message || `Could not scan replies (${reason || 'unknown error'})`);
         }
       } else if (r.data?.updated) {
-        toast.success('Extracted candidate reply — details updated');
+        toast.success(overwrite ? 'Force re-scan complete — details updated' : 'Extracted candidate reply — details updated');
         load();
       } else if (r.data?.replies_scanned > 0) {
         toast.message(`Scanned ${r.data.replies_scanned} repl${r.data.replies_scanned === 1 ? 'y' : 'ies'} — nothing new to extract`);
@@ -525,17 +538,50 @@ export default function CandidateProfilePage() {
               {isRecruiter && !editingDetails && (
                 <div className="flex items-center gap-1">
                   {isAdminPlus && cand.email && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 text-xs"
-                      onClick={scanReplies}
-                      disabled={scanningReplies}
-                      data-testid="candidate-scan-replies-button"
-                      title="Scan your Gmail inbox for candidate replies and auto-fill Notice Period / Expected Compensation"
-                    >
-                      {scanningReplies ? 'Scanning…' : 'Scan replies'}
-                    </Button>
+                    <div className="inline-flex items-center rounded-md border border-input">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs rounded-r-none border-r border-input"
+                        onClick={() => scanReplies(false)}
+                        disabled={scanningReplies}
+                        data-testid="candidate-scan-replies-button"
+                        title="Scan your Gmail inbox for candidate replies and auto-fill Notice Period / Expected Compensation (does not overwrite manual values)"
+                      >
+                        {scanningReplies ? 'Scanning…' : (<><Sparkles className="h-3.5 w-3.5 mr-1" /> Scan replies</>)}
+                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-1.5 rounded-l-none"
+                            disabled={scanningReplies}
+                            data-testid="candidate-scan-replies-menu"
+                            title="More scan options"
+                            aria-label="More scan options"
+                          >
+                            <ChevronDown className="h-3.5 w-3.5" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-64">
+                          <DropdownMenuItem
+                            onSelect={() => scanReplies(false)}
+                            data-testid="candidate-scan-replies-menu-normal"
+                          >
+                            <Sparkles className="h-3.5 w-3.5 mr-2" /> Scan replies
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onSelect={() => scanReplies(true)}
+                            className="text-rose-600 focus:text-rose-700 focus:bg-rose-50"
+                            data-testid="candidate-scan-replies-menu-force"
+                          >
+                            <RefreshCw className="h-3.5 w-3.5 mr-2" /> Force re-scan (overwrite manual)
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   )}
                   <Button
                     variant="ghost"

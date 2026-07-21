@@ -106,6 +106,9 @@ export default function CandidatesPage() {
   const [bulkDialog, setBulkDialog] = useState(null); // {action}
   // Bulk "Refresh from Email" (auto-extract notice_period + expected_ctc) state
   const [bulkScanTask, setBulkScanTask] = useState(null); // full status dict from backend
+  // Bulk "Refresh from Email" confirm dialog state
+  const [bulkScanDialogOpen, setBulkScanDialogOpen] = useState(false);
+  const [bulkScanOverwrite, setBulkScanOverwrite] = useState(false);
   const [bulkValue, setBulkValue] = useState('');
   const [bulkReason, setBulkReason] = useState('');
   const [bulkRejectCategory, setBulkRejectCategory] = useState('');
@@ -158,21 +161,28 @@ export default function CandidatesPage() {
       }
     }, 2000);
     return () => clearInterval(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bulkScanRunning]);
 
   const startBulkScan = async () => {
-    // If nothing is running, ask for confirmation. Bulk scan uses LLM credits
-    // and touches the recruiter's Gmail, so make the trigger deliberate.
-    if (!window.confirm(
-      'Refresh notice period and expected compensation for all candidates missing either field, using your connected Gmail?\n\n'
-      + 'This may take a few minutes and uses LLM credits.'
-    )) return;
+    // Open the confirmation dialog (with an "also overwrite manual values" checkbox).
+    // Actual submission happens in confirmBulkScan().
+    setBulkScanOverwrite(false);
+    setBulkScanDialogOpen(true);
+  };
+
+  const confirmBulkScan = async () => {
+    const overwrite = bulkScanOverwrite;
+    setBulkScanDialogOpen(false);
     try {
-      const r = await api.post('/candidates/bulk-scan-replies', null, { params: { only_missing: true, overwrite: false } });
+      // only_missing stays true even when overwrite=true — we still limit the sweep
+      // to candidates that are missing at least one field, but for that subset we
+      // allow the LLM to replace values whose source was set to 'manual'.
+      const r = await api.post('/candidates/bulk-scan-replies', null, { params: { only_missing: true, overwrite } });
       setBulkScanTask(r.data);
       if (r.data?.already_running) {
         toast.message('A refresh is already running');
+      } else if (overwrite) {
+        toast.info(`Force refresh started — scanning up to ${r.data?.total || 'all'} candidates (will overwrite manual values)`, { duration: 6000 });
       } else {
         toast.info(`Refresh started — scanning up to ${r.data?.total || 'all'} candidates`);
       }
@@ -672,6 +682,47 @@ export default function CandidatesPage() {
           }
         }}
       />
+
+      {/* Bulk "Refresh from Email" confirmation dialog */}
+      <Dialog open={bulkScanDialogOpen} onOpenChange={setBulkScanDialogOpen}>
+        <DialogContent className="sm:max-w-md" data-testid="bulk-scan-dialog">
+          <DialogHeader>
+            <DialogTitle>Refresh from Email</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 text-sm">
+            <p className="text-muted-foreground">
+              This will scan your connected Gmail inbox for candidate replies and auto-extract{' '}
+              <strong>Notice Period</strong> and <strong>Expected Compensation</strong> for every candidate that is
+              missing at least one of the two fields.
+            </p>
+            <p className="text-xs text-muted-foreground">
+              This may take a few minutes and uses LLM credits. You can leave this page — progress will keep updating on the toolbar button.
+            </p>
+            <label className="flex items-start gap-2 rounded-md border border-rose-200 bg-rose-50/50 p-3 cursor-pointer">
+              <Checkbox
+                checked={bulkScanOverwrite}
+                onCheckedChange={(v) => setBulkScanOverwrite(Boolean(v))}
+                className="mt-0.5"
+                data-testid="bulk-scan-overwrite-checkbox"
+              />
+              <span className="text-xs leading-snug">
+                <span className="font-medium text-rose-700">Also overwrite manually entered values.</span>{' '}
+                <span className="text-rose-700/80">
+                  Without this, values that a recruiter typed by hand are kept as-is. Previous values are always kept in history.
+                </span>
+              </span>
+            </label>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkScanDialogOpen(false)} data-testid="bulk-scan-cancel-button">
+              Cancel
+            </Button>
+            <Button onClick={confirmBulkScan} data-testid="bulk-scan-confirm-button">
+              <Sparkles className="h-4 w-4 mr-1" /> {bulkScanOverwrite ? 'Force refresh' : 'Start refresh'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
