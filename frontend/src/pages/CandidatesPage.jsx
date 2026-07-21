@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Download, FileSpreadsheet, FileText, Kanban, List, Loader2, Mail, RefreshCw, Search, Sparkles, UserPlus, X } from 'lucide-react';
+import { Download, FileSpreadsheet, FileText, Kanban, List, Loader2, Mail, RefreshCw, RotateCcw, Search, Sparkles, UserPlus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -123,6 +123,15 @@ export default function CandidatesPage() {
 
   // ---- Bulk "Refresh from Email" — kicks off backend task, polls for progress ----
   const bulkScanRunning = bulkScanTask?.status === 'running';
+  // "Undo last refresh" button is visible only after a completed run that
+  // actually updated at least one candidate AND hasn't already been undone.
+  const bulkUndoAvailable = Boolean(
+    bulkScanTask
+    && bulkScanTask.status === 'done'
+    && bulkScanTask.undoable
+    && !bulkScanTask.undone
+    && (bulkScanTask.undo_snapshot_count || bulkScanTask.updated || 0) > 0,
+  );
 
   const pollBulkScanStatus = useCallback(async () => {
     try {
@@ -133,6 +142,27 @@ export default function CandidatesPage() {
       return null;
     }
   }, []);
+
+  const undoLastBulkScan = useCallback(async () => {
+    if (!window.confirm(
+      'Undo the last "Refresh from Email"? This restores Notice Period and Expected Compensation on every candidate the run touched back to the values they had before the refresh.',
+    )) return;
+    try {
+      const r = await api.post('/candidates/bulk-scan-replies/undo');
+      if (r.data?.ok === false && r.data?.reason === 'nothing_to_undo') {
+        toast.message('Nothing to undo');
+      } else if (r.data?.already_undone) {
+        toast.message('Already undone');
+      } else {
+        toast.success(`Undone — restored ${r.data?.restored ?? 0} candidates`);
+      }
+      // Refresh both the status (so the button disappears) and the candidates list.
+      await pollBulkScanStatus();
+      load();
+    } catch (e) {
+      toast.error(errMsg(e, 'Undo failed'));
+    }
+  }, [pollBulkScanStatus]);
 
   // Poll every 2s while the task is running so the toast/status stays live.
   useEffect(() => {
@@ -145,7 +175,17 @@ export default function CandidatesPage() {
         // fields (if any were extracted) show up right away.
         if (s?.updated > 0) load();
         if (s?.status === 'done') {
-          toast.success(`Refreshed ${s.processed} candidates from Gmail — updated ${s.updated}`, { duration: 8000 });
+          if ((s.updated || 0) > 0) {
+            toast.success(`Refreshed ${s.processed} candidates from Gmail — updated ${s.updated}`, {
+              duration: 15000,
+              action: {
+                label: 'Undo',
+                onClick: () => undoLastBulkScan(),
+              },
+            });
+          } else {
+            toast.success(`Refreshed ${s.processed} candidates from Gmail — no new values extracted`, { duration: 8000 });
+          }
         } else if (s?.status === 'error') {
           const err = (s.errors || [])[0];
           const reason = err?.reason || 'error';
@@ -379,6 +419,17 @@ export default function CandidatesPage() {
                   {bulkScanRunning
                     ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Refreshing {bulkScanTask?.processed || 0}/{bulkScanTask?.total || '…'}</>
                     : <><Sparkles className="h-4 w-4 mr-1" /> Refresh from Email</>}
+                </Button>
+              )}
+              {isAdminPlus && bulkUndoAvailable && (
+                <Button
+                  variant="outline"
+                  onClick={undoLastBulkScan}
+                  className="border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100 hover:text-amber-900"
+                  data-testid="candidates-bulk-scan-undo-button"
+                  title={`Restore Notice Period and Expected Compensation for the ${bulkScanTask?.undo_snapshot_count || bulkScanTask?.updated || 0} candidate(s) the last refresh touched.`}
+                >
+                  <RotateCcw className="h-4 w-4 mr-1" /> Undo last refresh ({bulkScanTask?.undo_snapshot_count || bulkScanTask?.updated || 0})
                 </Button>
               )}
               <Button onClick={() => navigate('/candidates/new')} data-testid="candidates-add-button">

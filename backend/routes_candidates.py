@@ -573,6 +573,15 @@ _bulk_scan_task: dict = {
     'overwrite': False,
     'only_missing': True,
     'current_candidate_name': None,
+    # ---- Undo support ----
+    # For every candidate the run updates we snapshot the *pre-update* state so
+    # the user can one-click revert if the LLM extracted the wrong value(s).
+    # Cleared on the next bulk-scan kickoff.
+    'undo_snapshots': [],
+    'undoable': False,
+    'undone': False,
+    'undone_at': None,
+    'undone_count': 0,
 }
 
 
@@ -625,6 +634,25 @@ async def _run_bulk_scan(user: dict, overwrite: bool, only_missing: bool):
                         _bulk_scan_task['skipped_gmail_error'] += 1
                     if res.get('updated'):
                         _bulk_scan_task['updated'] += 1
+                        # Snapshot the *pre-update* state of this candidate so a
+                        # subsequent /undo can revert everything this bulk run
+                        # touched. `cand` was fetched at the start of the loop
+                        # (before scan_single_candidate mutated the doc), so its
+                        # notice_period/expected_compensation/… are exactly the
+                        # values we need to restore.
+                        _bulk_scan_task['undo_snapshots'].append({
+                            'candidate_id': cand.get('id'),
+                            'candidate_name': cand.get('name'),
+                            'before': {
+                                'notice_period': cand.get('notice_period'),
+                                'notice_period_meta': cand.get('notice_period_meta'),
+                                'notice_period_history': cand.get('notice_period_history'),
+                                'expected_compensation': cand.get('expected_compensation'),
+                                'expected_compensation_meta': cand.get('expected_compensation_meta'),
+                                'expected_compensation_history': cand.get('expected_compensation_history'),
+                                'last_email_sync_at': cand.get('last_email_sync_at'),
+                            },
+                        })
             except Exception as exc:
                 logger.exception('bulk scan candidate iteration failed for %s', cand.get('id'))
                 _bulk_scan_task['errors'].append({
@@ -641,9 +669,10 @@ async def _run_bulk_scan(user: dict, overwrite: bool, only_missing: bool):
         _bulk_scan_task['status'] = 'done'
         _bulk_scan_task['finished_at'] = _now_iso_local()
         _bulk_scan_task['current_candidate_name'] = None
-        logger.info('bulk scan finished: processed=%d updated=%d errors=%d',
+        _bulk_scan_task['undoable'] = _bulk_scan_task['updated'] > 0
+        logger.info('bulk scan finished: processed=%d updated=%d errors=%d undoable=%s',
                     _bulk_scan_task['processed'], _bulk_scan_task['updated'],
-                    len(_bulk_scan_task['errors']))
+                    len(_bulk_scan_task['errors']), _bulk_scan_task['undoable'])
     except Exception:
         logger.exception('bulk scan driver crashed')
         _bulk_scan_task['status'] = 'error'
@@ -687,6 +716,11 @@ async def bulk_scan_replies(overwrite: bool = False, only_missing: bool = True,
         'overwrite': bool(overwrite),
         'only_missing': bool(only_missing),
         'current_candidate_name': None,
+        'undo_snapshots': [],
+        'undoable': False,
+        'undone': False,
+        'undone_at': None,
+        'undone_count': 0,
     })
 
     _asyncio.create_task(_run_bulk_scan(user, bool(overwrite), bool(only_missing)))
@@ -697,5 +731,80 @@ async def bulk_scan_replies(overwrite: bool = False, only_missing: bool = True,
 async def bulk_scan_status(user: dict = Depends(require_roles('admin', 'recruiter'))):
     """Poll endpoint for the frontend's progress toast. Returns the current
     state of the global bulk task (or {status:'idle'} if none has run yet in
-    this backend lifetime)."""
-    return {**_bulk_scan_task}
+    this backend lifetime). The full undo_snapshots list is omitted (it can be
+    large); only the count is returned. Call /undo to consume it."""
+    out = {k: v for k, v in _bulk_scan_task.items() if k != 'undo_snapshots'}
+    out['undo_snapshot_count'] = len(_bulk_scan_task.get('undo_snapshots') or [])
+    return out
+
+
+@router.post('/bulk-scan-replies/undo')
+async def bulk_scan_undo(user: dict = Depends(require_roles('admin', 'recruiter'))):
+    """Revert the most recent completed bulk scan. For every candidate the run
+    updated, we restore notice_period / expected_compensation (+ their _meta /
+    _history / last_email_sync_at) back to the exact values they held BEFORE
+    the run started. Safe to call at most once per run — subsequent calls
+    return `already_undone`. A newly-kicked-off bulk scan wipes the undo
+    buffer, so the window to undo is 'until you start another refresh'."""
+    if not is_admin_or_higher(user):
+        raise HTTPException(status_code=403, detail='Only admins can undo bulk scans')
+
+    global _bulk_scan_task
+    if _bulk_scan_task.get('status') == 'running':
+        raise HTTPException(status_code=409, detail='A bulk scan is currently running — wait for it to finish before undoing')
+    if _bulk_scan_task.get('undone'):
+        return {'ok': True, 'already_undone': True, 'undone_count': _bulk_scan_task.get('undone_count', 0)}
+    snapshots = _bulk_scan_task.get('undo_snapshots') or []
+    if not snapshots:
+        return {'ok': False, 'reason': 'nothing_to_undo', 'message': 'No recent bulk refresh to undo.'}
+
+    restored = 0
+    failed = []
+    for snap in snapshots:
+        cid = snap.get('candidate_id')
+        before = snap.get('before') or {}
+        if not cid:
+            continue
+        try:
+            # Use $set + $unset so a field that was previously null/absent gets
+            # removed cleanly (not left as the LLM-extracted value).
+            set_ops: dict = {}
+            unset_ops: dict = {}
+            for field in ('notice_period', 'notice_period_meta', 'notice_period_history',
+                          'expected_compensation', 'expected_compensation_meta',
+                          'expected_compensation_history', 'last_email_sync_at'):
+                val = before.get(field)
+                if val is None:
+                    unset_ops[field] = ''
+                else:
+                    set_ops[field] = val
+            update_doc: dict = {}
+            if set_ops:
+                update_doc['$set'] = set_ops
+            if unset_ops:
+                update_doc['$unset'] = unset_ops
+            if update_doc:
+                r = await db.candidates.update_one({'id': cid}, update_doc)
+                if r.matched_count:
+                    restored += 1
+                else:
+                    failed.append({'candidate_id': cid, 'reason': 'candidate_not_found'})
+        except Exception as exc:
+            logger.exception('undo failed for candidate %s', cid)
+            failed.append({'candidate_id': cid, 'reason': 'exception', 'message': str(exc)[:200]})
+
+    _bulk_scan_task['undone'] = True
+    _bulk_scan_task['undone_at'] = _now_iso_local()
+    _bulk_scan_task['undone_count'] = restored
+    _bulk_scan_task['undoable'] = False
+    # Clear the buffer — no double undo.
+    _bulk_scan_task['undo_snapshots'] = []
+
+    logger.info('bulk scan undo: restored=%d failed=%d by=%s', restored, len(failed), user.get('email'))
+    return {
+        'ok': True,
+        'already_undone': False,
+        'restored': restored,
+        'failed': failed[:20],
+        'failed_count': len(failed),
+    }
