@@ -15,6 +15,7 @@ import {
   Search,
   Settings,
   Shield,
+  UserCircle2,
   UserPlus,
   Users,
 } from 'lucide-react';
@@ -272,6 +273,9 @@ function roleSatisfiesNav(userRole, requiredRoles) {
                   <Badge variant="secondary" className="mt-1 capitalize">{user?.role}</Badge>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => navigate('/account')} data-testid="account-menu" className="cursor-pointer">
+                  <UserCircle2 className="h-4 w-4 mr-2" /> Account &amp; Security
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => navigate('/my-integrations')} data-testid="my-integrations-menu" className="cursor-pointer">
                   <Mail className="h-4 w-4 mr-2" /> My Integrations
                 </DropdownMenuItem>
