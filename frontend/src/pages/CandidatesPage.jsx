@@ -109,6 +109,12 @@ export default function CandidatesPage() {
   // Bulk "Refresh from Email" confirm dialog state
   const [bulkScanDialogOpen, setBulkScanDialogOpen] = useState(false);
   const [bulkScanOverwrite, setBulkScanOverwrite] = useState(false);
+  // Whether the CURRENT dialog session is scoped to just the selected rows
+  // (true) or to every candidate missing a field across the DB (false).
+  // Captured when startBulkScan is called so a user unchecking rows mid-flow
+  // doesn't change the scope out from under them.
+  const [bulkScanUseSelection, setBulkScanUseSelection] = useState(false);
+  const [bulkScanSelectionSnapshot, setBulkScanSelectionSnapshot] = useState([]);
   const [bulkValue, setBulkValue] = useState('');
   const [bulkReason, setBulkReason] = useState('');
   const [bulkRejectCategory, setBulkRejectCategory] = useState('');
@@ -203,24 +209,42 @@ export default function CandidatesPage() {
     return () => clearInterval(t);
   }, [bulkScanRunning]);
 
-  const startBulkScan = async () => {
+  const startBulkScan = async ({ useSelection = false } = {}) => {
     // Open the confirmation dialog (with an "also overwrite manual values" checkbox).
-    // Actual submission happens in confirmBulkScan().
+    // Actual submission happens in confirmBulkScan(). `useSelection=true` scopes
+    // the run to the currently-selected candidate ids; otherwise it sweeps all
+    // candidates missing at least one field.
     setBulkScanOverwrite(false);
+    setBulkScanUseSelection(useSelection);
+    setBulkScanSelectionSnapshot(useSelection ? [...selected] : []);
     setBulkScanDialogOpen(true);
   };
 
   const confirmBulkScan = async () => {
     const overwrite = bulkScanOverwrite;
+    const useSelection = bulkScanUseSelection;
+    const ids = useSelection ? bulkScanSelectionSnapshot : null;
     setBulkScanDialogOpen(false);
     try {
       // only_missing stays true even when overwrite=true — we still limit the sweep
       // to candidates that are missing at least one field, but for that subset we
       // allow the LLM to replace values whose source was set to 'manual'.
-      const r = await api.post('/candidates/bulk-scan-replies', null, { params: { only_missing: true, overwrite } });
+      const r = await api.post(
+        '/candidates/bulk-scan-replies',
+        useSelection ? { candidate_ids: ids } : null,
+        { params: { only_missing: true, overwrite } },
+      );
       setBulkScanTask(r.data);
       if (r.data?.already_running) {
         toast.message('A refresh is already running');
+      } else if (useSelection) {
+        const skipped = r.data?.skipped_already_complete ?? 0;
+        const scanning = r.data?.total ?? (ids?.length || 0);
+        const scopeMsg = skipped > 0
+          ? `Refresh started — scanning ${scanning} of ${ids?.length || 0} selected (${skipped} already complete)`
+          : `Refresh started — scanning ${scanning} selected candidate${scanning === 1 ? '' : 's'}`;
+        if (overwrite) toast.info(`${scopeMsg} (will overwrite manual values)`, { duration: 6000 });
+        else toast.info(scopeMsg);
       } else if (overwrite) {
         toast.info(`Force refresh started — scanning up to ${r.data?.total || 'all'} candidates (will overwrite manual values)`, { duration: 6000 });
       } else {
@@ -411,7 +435,7 @@ export default function CandidatesPage() {
               {isAdminPlus && (
                 <Button
                   variant="outline"
-                  onClick={startBulkScan}
+                  onClick={() => startBulkScan({ useSelection: false })}
                   disabled={bulkScanRunning}
                   data-testid="candidates-bulk-scan-button"
                   title="Auto-extract notice period and expected compensation from your connected Gmail for all candidates missing either field."
@@ -509,10 +533,23 @@ export default function CandidatesPage() {
       {selected.length > 0 && isRecruiter && (
         <div className="flex flex-wrap items-center gap-2 bg-accent border border-border rounded-xl px-4 py-2.5" data-testid="candidates-bulk-actions-bar">
           <span className="text-sm font-medium text-accent-foreground">{selected.length} selected</span>
-          <div className="flex gap-2 ml-auto">
+          <div className="flex gap-2 ml-auto flex-wrap">
             <Button size="sm" variant="outline" className="bg-card" onClick={() => setEmailDialogOpen(true)} data-testid="bulk-send-email-button">
               <Mail className="h-3.5 w-3.5 mr-1" /> Send Email
             </Button>
+            {isAdminPlus && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="bg-card"
+                onClick={() => startBulkScan({ useSelection: true })}
+                disabled={bulkScanRunning}
+                data-testid="bulk-scan-selected-button"
+                title="Auto-extract Notice Period + Expected Compensation from Gmail for the selected candidates (skips any that already have both fields)."
+              >
+                <Sparkles className="h-3.5 w-3.5 mr-1" /> Refresh from Email
+              </Button>
+            )}
             <Button size="sm" variant="outline" className="bg-card" onClick={() => setBulkDialog('move_stage')} data-testid="bulk-move-stage-button">Move Stage</Button>
             <Button size="sm" variant="outline" className="bg-card" onClick={() => setBulkDialog('tag')} data-testid="bulk-tag-button">Tag</Button>
             <Button size="sm" variant="outline" className="bg-card" onClick={() => setBulkDialog('assign')} data-testid="bulk-assign-button">Assign</Button>
@@ -738,12 +775,28 @@ export default function CandidatesPage() {
       <Dialog open={bulkScanDialogOpen} onOpenChange={setBulkScanDialogOpen}>
         <DialogContent className="sm:max-w-md" data-testid="bulk-scan-dialog">
           <DialogHeader>
-            <DialogTitle>Refresh from Email</DialogTitle>
+            <DialogTitle>
+              {bulkScanUseSelection
+                ? `Refresh from Email — ${bulkScanSelectionSnapshot.length} selected`
+                : 'Refresh from Email'}
+            </DialogTitle>
             <DialogDescription>
-              Auto-extract Notice Period and Expected Compensation from your connected Gmail inbox for every candidate that is missing at least one of the two fields.
+              {bulkScanUseSelection
+                ? `Auto-extract Notice Period and Expected Compensation from your connected Gmail inbox for the ${bulkScanSelectionSnapshot.length} selected candidate${bulkScanSelectionSnapshot.length === 1 ? '' : 's'}. Candidates that already have BOTH fields filled will be skipped automatically.`
+                : 'Auto-extract Notice Period and Expected Compensation from your connected Gmail inbox for every candidate that is missing at least one of the two fields. Candidates with both fields already filled are skipped.'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 text-sm">
+            <div className="rounded-md border border-border bg-secondary/40 p-3 text-xs" data-testid="bulk-scan-scope-info">
+              <div className="font-medium">Scope</div>
+              <div className="text-muted-foreground mt-0.5">
+                {bulkScanUseSelection ? (
+                  <>Only the <span className="font-mono">{bulkScanSelectionSnapshot.length}</span> selected candidate{bulkScanSelectionSnapshot.length === 1 ? '' : 's'}. Any that already have both fields filled will be skipped.</>
+                ) : (
+                  <>All candidates missing Notice Period <em>or</em> Expected Compensation. Candidates with both fields filled are skipped.</>
+                )}
+              </div>
+            </div>
             <p className="text-xs text-muted-foreground">
               This may take a few minutes and uses LLM credits. You can leave this page — progress will keep updating on the toolbar button.
             </p>

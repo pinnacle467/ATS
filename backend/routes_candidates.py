@@ -1,7 +1,7 @@
 import csv
 import io
 import logging
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -568,10 +568,13 @@ _bulk_scan_task: dict = {
     'updated': 0,
     'skipped_no_email': 0,
     'skipped_gmail_error': 0,
+    'skipped_already_complete': 0,
     'errors': [],                  # last few
     'triggered_by': None,          # user id
     'overwrite': False,
     'only_missing': True,
+    'scope': 'all',                # 'all' | 'selected'
+    'selected_count': 0,
     'current_candidate_name': None,
     # ---- Undo support ----
     # For every candidate the run updates we snapshot the *pre-update* state so
@@ -585,31 +588,46 @@ _bulk_scan_task: dict = {
 }
 
 
-async def _run_bulk_scan(user: dict, overwrite: bool, only_missing: bool):
+async def _run_bulk_scan(user: dict, overwrite: bool, only_missing: bool, candidate_ids: Optional[List[str]] = None):
     """Background driver for the bulk scan. Iterates candidates, calls
     scan_single_candidate on each, updates the shared progress dict. Errors on
     individual candidates are recorded and the loop continues — one bad row
-    must not abort the whole job."""
+    must not abort the whole job.
+
+    When `candidate_ids` is provided, the scope is limited to that specific
+    subset (used when the recruiter has multi-selected rows on the Candidates
+    page). `only_missing` still applies on top of the subset, so already-
+    complete candidates in the selection are skipped automatically."""
     from reply_scanner import scan_single_candidate
     global _bulk_scan_task
     try:
-        # Build the candidate iterator per the scope choice. "only_missing" is
-        # the user's chosen default (Q2.c) — candidates that already have both
-        # notice_period AND expected_compensation are skipped, which cuts LLM
-        # cost dramatically without losing coverage of gaps.
+        # Build the candidate iterator. Two independent filters that AND together:
+        #   1. Selection scope   — if provided, restrict to those ids
+        #   2. only_missing flag — skip candidates that already have both fields
         query: dict = {}
+        if candidate_ids:
+            # De-dup + defensive length cap (avoid a giant $in that hits Mongo limits).
+            ids = list({cid for cid in candidate_ids if cid})[:2000]
+            query['id'] = {'$in': ids}
         if only_missing:
-            query = {
-                '$or': [
-                    {'notice_period': {'$in': [None, '']}},
-                    {'expected_compensation': {'$in': [None, '']}},
-                ],
-            }
+            query['$or'] = [
+                {'notice_period': {'$in': [None, '']}},
+                {'expected_compensation': {'$in': [None, '']}},
+            ]
         cursor = db.candidates.find(query, {'_id': 0}).sort('updated_at', -1)
         cand_list = await cursor.to_list(2000)  # hard cap so a runaway can't hang forever
         _bulk_scan_task['total'] = len(cand_list)
-        logger.info('bulk scan starting: total=%d overwrite=%s only_missing=%s user=%s',
-                    len(cand_list), overwrite, only_missing, user.get('email'))
+        # Record how many of the selection were skipped up-front because they
+        # already had both fields — helpful for the "Refresh done" toast so the
+        # user understands why processed < selected.
+        if candidate_ids:
+            _bulk_scan_task['selected_count'] = len(candidate_ids)
+            _bulk_scan_task['skipped_already_complete'] = max(0, len(candidate_ids) - len(cand_list))
+        logger.info(
+            'bulk scan starting: total=%d overwrite=%s only_missing=%s selected=%s user=%s',
+            len(cand_list), overwrite, only_missing,
+            len(candidate_ids) if candidate_ids else 'all', user.get('email'),
+        )
 
         for cand in cand_list:
             _bulk_scan_task['current_candidate_name'] = cand.get('name')
@@ -684,13 +702,24 @@ def _now_iso_local():
     return _n()
 
 
+class BulkScanBody(BaseModel):
+    # Optional subset of candidate ids to restrict the scan to. Empty/None means
+    # "scan everything the only_missing filter matches".
+    candidate_ids: Optional[List[str]] = None
+
+
 @router.post('/bulk-scan-replies')
 async def bulk_scan_replies(overwrite: bool = False, only_missing: bool = True,
+                            body: Optional[BulkScanBody] = None,
                             user: dict = Depends(require_roles('admin', 'recruiter'))):
-    """Kick off a bulk email-scan across all candidates in scope. Returns the
+    """Kick off a bulk email-scan across candidates in scope. Returns the
     task_id immediately; the frontend polls `/candidates/bulk-scan-replies/status`
     for progress. Only one bulk task runs globally at a time — a second POST
-    while one is in-flight returns the in-flight task info (HTTP 200, not an error)."""
+    while one is in-flight returns the in-flight task info (HTTP 200, not an error).
+
+    Optional JSON body: `{"candidate_ids": ["id1", "id2", ...]}` restricts the
+    scan to a specific selection. `only_missing` still applies within that
+    subset — candidates that already have both fields filled are skipped."""
     import asyncio as _asyncio
 
     if not is_admin_or_higher(user):
@@ -698,8 +727,13 @@ async def bulk_scan_replies(overwrite: bool = False, only_missing: bool = True,
 
     global _bulk_scan_task
     if _bulk_scan_task.get('status') == 'running':
-        return {'ok': True, 'already_running': True, **_bulk_scan_task}
+        # Trim undo_snapshots from the already-running response payload — same
+        # shape as the /status endpoint returns to avoid leaking a large field.
+        payload = {k: v for k, v in _bulk_scan_task.items() if k != 'undo_snapshots'}
+        payload['undo_snapshot_count'] = len(_bulk_scan_task.get('undo_snapshots') or [])
+        return {'ok': True, 'already_running': True, **payload}
 
+    candidate_ids = list(body.candidate_ids) if body and body.candidate_ids else None
     _bulk_scan_task.clear()
     _bulk_scan_task.update({
         'task_id': new_id(),
@@ -711,10 +745,15 @@ async def bulk_scan_replies(overwrite: bool = False, only_missing: bool = True,
         'updated': 0,
         'skipped_no_email': 0,
         'skipped_gmail_error': 0,
+        'skipped_already_complete': 0,
         'errors': [],
         'triggered_by': user['id'],
         'overwrite': bool(overwrite),
         'only_missing': bool(only_missing),
+        # Scope info — surfaced in the UI so the recruiter sees whether they
+        # kicked off "all missing" or "N selected".
+        'scope': 'selected' if candidate_ids else 'all',
+        'selected_count': len(candidate_ids) if candidate_ids else 0,
         'current_candidate_name': None,
         'undo_snapshots': [],
         'undoable': False,
@@ -723,8 +762,11 @@ async def bulk_scan_replies(overwrite: bool = False, only_missing: bool = True,
         'undone_count': 0,
     })
 
-    _asyncio.create_task(_run_bulk_scan(user, bool(overwrite), bool(only_missing)))
-    return {'ok': True, 'already_running': False, **_bulk_scan_task}
+    _asyncio.create_task(_run_bulk_scan(user, bool(overwrite), bool(only_missing), candidate_ids))
+    # Trim undo_snapshots from the kickoff response — same shape as /status.
+    payload = {k: v for k, v in _bulk_scan_task.items() if k != 'undo_snapshots'}
+    payload['undo_snapshot_count'] = 0
+    return {'ok': True, 'already_running': False, **payload}
 
 
 @router.get('/bulk-scan-replies/status')
