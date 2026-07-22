@@ -4,6 +4,8 @@ import { Toaster } from '@/components/ui/sonner';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import AppShell from '@/components/AppShell';
 import LoginPage from '@/pages/LoginPage';
+import ForgotPasswordPage from '@/pages/ForgotPasswordPage';
+import ResetPasswordPage from '@/pages/ResetPasswordPage';
 import DashboardPage from '@/pages/DashboardPage';
 import CandidatesPage from '@/pages/CandidatesPage';
 import CandidateProfilePage from '@/pages/CandidateProfilePage';
@@ -63,6 +65,8 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/" element={<Protected><DashboardPage /></Protected>} />
           <Route path="/candidates" element={<Protected><CandidatesPage /></Protected>} />
           <Route path="/candidates/new" element={<Protected roles={['admin', 'recruiter']}><AddCandidatePage /></Protected>} />

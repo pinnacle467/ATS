@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -8,12 +8,6 @@ import { Label } from '@/components/ui/label';
 import PinnacleLogo from '@/components/PinnacleLogo';
 import { useAuth } from '@/context/AuthContext';
 import { errMsg } from '@/lib/api';
-
-const DEMO_ACCOUNTS = [
-  { label: 'Admin', email: 'admin@ats.com', password: 'Admin@123' },
-  { label: 'Recruiter', email: 'recruiter@ats.com', password: 'Recruit@123' },
-  { label: 'Interviewer', email: 'interviewer@ats.com', password: 'Interview@123' },
-];
 
 export default function LoginPage() {
   const { user, login } = useAuth();
@@ -72,7 +66,16 @@ export default function LoginPage() {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="password">Password</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="password">Password</Label>
+                    <Link
+                      to="/forgot-password"
+                      className="text-xs text-primary hover:underline font-medium"
+                      data-testid="forgot-password-link"
+                    >
+                      Forgot password?
+                    </Link>
+                  </div>
                   <Input
                     id="password"
                     type="password"
@@ -87,35 +90,6 @@ export default function LoginPage() {
                   {busy ? 'Signing in...' : 'Sign in'}
                 </Button>
               </form>
-
-              <div className="mt-6">
-                <div className="text-xs text-muted-foreground mb-2 text-center">Demo accounts — one-click sign in</div>
-                <div className="grid grid-cols-3 gap-2">
-                  {DEMO_ACCOUNTS.map((d) => (
-                    <Button
-                      key={d.label}
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      data-testid={`demo-login-${d.label.toLowerCase()}`}
-                      disabled={busy}
-                      onClick={async () => {
-                        setBusy(true);
-                        try {
-                          await login(d.email, d.password);
-                          navigate('/');
-                        } catch (err) {
-                          toast.error(errMsg(err, 'Login failed'));
-                        } finally {
-                          setBusy(false);
-                        }
-                      }}
-                    >
-                      {d.label}
-                    </Button>
-                  ))}
-                </div>
-              </div>
             </CardContent>
           </Card>
         </div>
