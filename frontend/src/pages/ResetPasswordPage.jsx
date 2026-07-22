@@ -202,7 +202,7 @@ export default function ResetPasswordPage() {
         />
         <div className="absolute inset-0 bg-gradient-to-br from-emerald-950/20 via-transparent to-emerald-950/40" />
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
-        <div className="absolute bottom-12 left-12 right-12">
+        <div className="absolute inset-0 flex flex-col justify-center px-12">
           <p className="font-display text-3xl xl:text-4xl font-semibold text-white leading-tight tracking-tight">
             Fresh start,<br />same secure workspace.
           </p>

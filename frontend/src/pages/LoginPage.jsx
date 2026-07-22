@@ -117,7 +117,7 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <div className="absolute bottom-12 left-12 right-12">
+        <div className="absolute inset-0 flex flex-col justify-center px-12">
           <p className="font-display text-3xl xl:text-4xl font-semibold text-white leading-tight tracking-tight">
             Hire faster with a pipeline<br />your whole team can see.
           </p>
