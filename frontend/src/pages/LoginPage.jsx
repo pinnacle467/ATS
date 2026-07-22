@@ -97,12 +97,12 @@ export default function LoginPage() {
 
       <div className="hidden lg:block relative bg-emerald-950 overflow-hidden">
         <img
-          src="https://images.pexels.com/photos/9301835/pexels-photo-9301835.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=1080&w=1440"
-          alt="Diverse hiring team collaborating in a modern office"
-          className="absolute inset-0 h-full w-full object-cover opacity-90"
+          src="https://images.unsplash.com/photo-1708549566274-638eb2d2108b?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzV8MHwxfHNlYXJjaHwyfHxlbWVyYWxkJTIwZ3JhZGllbnR8ZW58MHx8fGdyZWVufDE3ODQ3NjEwMjd8MA&ixlib=rb-4.1.0&q=85"
+          alt="Abstract emerald gradient"
+          className="absolute inset-0 h-full w-full object-cover"
         />
-        {/* Emerald brand overlay + darker bottom gradient for legible caption */}
-        <div className="absolute inset-0 bg-gradient-to-br from-emerald-900/30 via-transparent to-emerald-950/50" />
+        {/* Subtle emerald brand overlay + darker bottom gradient for legible caption */}
+        <div className="absolute inset-0 bg-gradient-to-br from-emerald-950/20 via-transparent to-emerald-950/40" />
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
 
         {/* Floating trust chips */}
