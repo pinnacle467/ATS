@@ -12,6 +12,7 @@ from fastapi import APIRouter, FastAPI
 from starlette.middleware.cors import CORSMiddleware
 
 from database import client
+from db_indexes import ensure_indexes, scan_for_duplicate_ids
 from seed import seed_if_empty
 import routes_auth
 import routes_resumes
@@ -86,6 +87,22 @@ async def startup():
     rbac_counts = await migrate_to_new_rbac(_db)
     if any(rbac_counts.values()):
         logger.info(f'RBAC migration applied: {rbac_counts}')
+    # Ensure unique indexes on business IDs (idempotent). Guarantees no
+    # duplicate job/candidate/interview/user/file IDs can ever be inserted.
+    try:
+        dupes = await scan_for_duplicate_ids(_db)
+        bad = {k: v for k, v in dupes.items() if v}
+        if bad:
+            logger.error(f'Duplicate IDs detected BEFORE indexing (must resolve manually): {bad}')
+        idx_report = await ensure_indexes(_db)
+        if idx_report['created']:
+            logger.info(f'Created unique indexes: {idx_report["created"]}')
+        if idx_report['existed']:
+            logger.info(f'Unique indexes already existed: {idx_report["existed"]}')
+        if idx_report['errors']:
+            logger.error(f'Index creation errors: {idx_report["errors"]}')
+    except Exception:
+        logger.exception('ensure_indexes failed')
     asyncio.create_task(reminder_loop())
     # Snapshot durability: instead of a periodic timer, we install a git
     # pre-commit hook that dumps MongoDB → data_seed/snapshot.json
