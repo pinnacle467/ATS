@@ -135,3 +135,4 @@ websockets==16.1
 yarl==1.24.2
 zipp==4.1.0
 resend>=2.0.0
+google-apps-meet==0.5.0

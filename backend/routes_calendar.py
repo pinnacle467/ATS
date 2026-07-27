@@ -79,12 +79,20 @@ async def calendar_status(user: dict = Depends(get_current_user)):
     u = await db.users.find_one({'id': user['id']}, {'_id': 0})
     connected = bool(u and u.get('google_tokens'))
     scopes = ((u.get('google_tokens') or {}).get('scope') or '').split(' ') if connected else []
+    scope_set = {s for s in scopes if s}
     return {
         'connected': connected,
         'email': u.get('google_calendar_email') if connected else None,
         'scopes': [s for s in scopes if s],
-        'can_read_inbox': 'https://www.googleapis.com/auth/gmail.readonly' in scopes,
-        'can_send_email': 'https://www.googleapis.com/auth/gmail.send' in scopes,
+        'can_read_inbox': 'https://www.googleapis.com/auth/gmail.readonly' in scope_set,
+        'can_send_email': 'https://www.googleapis.com/auth/gmail.send' in scope_set,
+        # Meet API v2 scopes needed for auto Gemini smart-notes + transcription.
+        # If either is missing, the frontend should show a "reconnect to enable
+        # Gemini notes" banner in the Schedule Interview dialog.
+        'can_create_meet_ai': (
+            'https://www.googleapis.com/auth/meetings.space.created' in scope_set
+            and 'https://www.googleapis.com/auth/meetings.space.settings' in scope_set
+        ),
     }
 
 

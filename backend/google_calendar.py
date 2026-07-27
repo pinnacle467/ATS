@@ -13,6 +13,8 @@ CLIENT_SECRET = os.environ['GOOGLE_CLIENT_SECRET']
 REDIRECT_URI = f"{os.environ['APP_BASE_URL']}/api/oauth/calendar/callback"
 SCOPES = ['https://www.googleapis.com/auth/calendar', 'https://www.googleapis.com/auth/gmail.send',
           'https://www.googleapis.com/auth/gmail.readonly',
+          'https://www.googleapis.com/auth/meetings.space.created',
+          'https://www.googleapis.com/auth/meetings.space.settings',
           'https://www.googleapis.com/auth/userinfo.email', 'openid']
 AUTH_URI = 'https://accounts.google.com/o/oauth2/v2/auth'
 TOKEN_URI = 'https://oauth2.googleapis.com/token'
@@ -88,7 +90,16 @@ def free_busy(creds: Credentials, time_min_iso: str, time_max_iso: str, calendar
 
 
 def create_event(creds: Credentials, summary: str, description: str, start_iso: str, end_iso: str,
-                  attendee_emails: list[str], location: str = None, add_meet: bool = True) -> dict:
+                  attendee_emails: list[str], location: str = None, add_meet: bool = True,
+                  meet_space: dict | None = None) -> dict:
+    """Create a Google Calendar event.
+
+    - If `meet_space` is provided (from google_meet.create_ai_meet_space), attach
+      that specific Meet URI as the conferenceData entry — the Meet space
+      already has auto Gemini notes + transcription configured.
+    - Otherwise if `add_meet` is True, use the classic `createRequest` flow so
+      Calendar auto-generates a plain Meet link (no Gemini artifacts).
+    """
     body = {
         'summary': summary,
         'description': description,
@@ -104,10 +115,23 @@ def create_event(creds: Credentials, summary: str, description: str, start_iso: 
     }
     if location:
         body['location'] = location
-    if add_meet:
+    use_meet_api_version = 0
+    if meet_space and meet_space.get('meeting_uri'):
+        body['conferenceData'] = {
+            'conferenceSolution': {'key': {'type': 'hangoutsMeet'}},
+            'conferenceId': meet_space.get('meeting_code'),
+            'entryPoints': [{
+                'entryPointType': 'video',
+                'uri': meet_space['meeting_uri'],
+                'label': 'Google Meet',
+            }],
+        }
+        use_meet_api_version = 1
+    elif add_meet:
         body['conferenceData'] = {'createRequest': {'requestId': f'ats-{start_iso}', 'conferenceSolutionKey': {'type': 'hangoutsMeet'}}}
+        use_meet_api_version = 1
     return _service(creds).events().insert(
-        calendarId='primary', body=body, conferenceDataVersion=1 if add_meet else 0, sendUpdates='all',
+        calendarId='primary', body=body, conferenceDataVersion=use_meet_api_version, sendUpdates='all',
     ).execute()
 
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CalendarCheck, Clock, Globe, Loader2, MapPin, Users, Video, X } from 'lucide-react';
+import { CalendarCheck, Clock, Globe, Loader2, MapPin, Sparkles, Users, Video, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -57,18 +57,25 @@ export default function ScheduleInterviewDialog({ open, onOpenChange, onSchedule
     video_link: '',
     notes: '',
     auto_meet: true,
+    enable_gemini_ai: true,
   }));
   const [availability, setAvailability] = useState(null);
   const [checking, setChecking] = useState(false);
   const [saving, setSaving] = useState(false);
   const [interviewerSearch, setInterviewerSearch] = useState('');
+  const [calStatus, setCalStatus] = useState(null); // { connected, can_create_meet_ai, ... }
 
   useEffect(() => {
     if (!open) return;
-    Promise.all([api.get('/candidates', { params: { status: 'active', limit: 500 } }), api.get('/users')])
-      .then(([c, u]) => {
+    Promise.all([
+      api.get('/candidates', { params: { status: 'active', limit: 500 } }),
+      api.get('/users'),
+      api.get('/calendar/status').catch(() => ({ data: null })),
+    ])
+      .then(([c, u, s]) => {
         setCandidates(c.data.items);
         setUsers(u.data.filter((x) => x.active !== false));
+        setCalStatus(s.data);
       })
       .catch(() => {});
     setForm((f) => ({ ...f, candidate_id: presetCandidateId || f.candidate_id }));
@@ -138,13 +145,15 @@ export default function ScheduleInterviewDialog({ open, onOpenChange, onSchedule
         location: form.location || null,
         video_link: form.auto_meet && !form.video_link ? null : (form.video_link || null),
         notes: form.notes || null,
+        enable_gemini_ai: form.enable_gemini_ai && !form.video_link,
       });
       toast.success('Interview scheduled — interviewers notified');
       onOpenChange(false);
       setForm({
         candidate_id: '', type: 'phone_screen', interviewer_ids: [],
         date: '', time: '10:00', timezone: getBrowserTz(),
-        duration_min: 60, location: '', video_link: '', notes: '', auto_meet: true,
+        duration_min: 60, location: '', video_link: '', notes: '',
+        auto_meet: true, enable_gemini_ai: true,
       });
       setAvailability(null);
       onScheduled?.();
@@ -310,6 +319,41 @@ export default function ScheduleInterviewDialog({ open, onOpenChange, onSchedule
               )}
             </div>
           </div>
+
+          {/* Gemini AI (auto notes + transcription) — only relevant when a Meet link is being auto-created */}
+          {!form.video_link && (
+            <div className="rounded-lg border border-border bg-gradient-to-br from-emerald-50/40 to-transparent p-3">
+              <div className="flex items-start gap-3">
+                <Checkbox
+                  id="enable-gemini-ai"
+                  checked={form.enable_gemini_ai}
+                  onCheckedChange={(v) => setForm((f) => ({ ...f, enable_gemini_ai: !!v }))}
+                  data-testid="schedule-gemini-toggle"
+                  className="mt-0.5"
+                />
+                <div className="flex-1 min-w-0">
+                  <Label htmlFor="enable-gemini-ai" className="flex items-center gap-1.5 text-sm font-medium cursor-pointer">
+                    <Sparkles className="h-3.5 w-3.5 text-emerald-600" />
+                    Enable Gemini smart notes &amp; transcription
+                  </Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Auto-generates AI meeting notes and a live transcript in Google Meet. Requires a Workspace edition with Gemini for Meet.
+                  </p>
+                  {calStatus && calStatus.connected && !calStatus.can_create_meet_ai && form.enable_gemini_ai && (
+                    <div className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5 flex items-start gap-1.5" data-testid="schedule-gemini-reconnect-hint">
+                      <Sparkles className="h-3 w-3 mt-0.5 flex-shrink-0" />
+                      <span>Reconnect Google Calendar in <a href="/my-integrations" className="underline font-medium">My Integrations</a> to grant the new Meet AI permissions.</span>
+                    </div>
+                  )}
+                  {calStatus && !calStatus.connected && form.enable_gemini_ai && (
+                    <div className="mt-2 text-xs text-muted-foreground bg-muted rounded-md px-2 py-1.5">
+                      Connect Google Calendar in <a href="/my-integrations" className="underline font-medium">My Integrations</a> first — Gemini notes won&apos;t apply without a Meet link.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Notes */}
           <div className="space-y-1.5">

@@ -1,4 +1,6 @@
 from datetime import datetime, timedelta, timezone
+import asyncio
+import logging
 import os
 from typing import Optional
 
@@ -8,10 +10,12 @@ from pydantic import BaseModel
 from auth import get_current_user, require_roles
 from database import db
 from google_calendar import create_event, delete_event, free_busy, get_credentials_for_user, update_event
+from google_meet import create_ai_meet_space, has_meet_ai_scopes
 from feedback_emails import send_scorecard_request
 from permissions import is_admin_or_higher, is_interview_panel, is_vendor
 from utils import clean, log_activity, log_audit, new_id, notify, now_iso
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=['interviews'])
 
 DEFAULT_ATTRS = ['Communication', 'Technical Skill', 'Problem Solving', 'Culture Fit']
@@ -62,20 +66,48 @@ async def _sync_calendar_on_create(user: dict, iv: dict, cand: dict):
     if iv.get('job_id'):
         job = await db.jobs.find_one({'id': iv['job_id']}, {'_id': 0})
     description = _build_event_description(iv, cand, job)
+
+    # === Optional: Gemini AI Meet space (auto notes + transcription) ===========
+    # If the user requested AI notes AND has connected Google Calendar with the
+    # newer meet-space scopes, try to pre-create a Meet space with auto smart
+    # notes + auto transcription ON. On any failure (missing scope, Workspace
+    # tier without Gemini, API refusal) we fall back to a plain Meet link.
+    meet_space = None
+    ai_status = 'not_requested'
+    if iv.get('enable_gemini_ai') and not iv.get('video_link'):
+        u_full = await db.users.find_one({'id': user['id']})
+        tokens = (u_full or {}).get('google_tokens') or {}
+        if has_meet_ai_scopes(tokens.get('scope', '')):
+            try:
+                meet_space = await asyncio.to_thread(create_ai_meet_space, creds)
+                ai_status = 'enabled' if meet_space.get('ai_enabled') else 'space_created_no_ai'
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"Gemini Meet space creation failed for interview {iv['id']}: {e}")
+                ai_status = f'error:{type(e).__name__}'
+                meet_space = None
+        else:
+            ai_status = 'missing_scope'
+
     try:
         event = create_event(
             creds,
             summary=f"Interview: {cand['name']} ({iv['type'].replace('_', ' ').title()})",
             description=description,
             start_iso=start.isoformat(), end_iso=end.isoformat(),
-            attendee_emails=attendees, location=iv.get('location'), add_meet=not bool(iv.get('video_link')),
+            attendee_emails=attendees, location=iv.get('location'),
+            add_meet=not bool(iv.get('video_link')),
+            meet_space=meet_space,
         )
     except Exception:
         return
-    meet_link = event.get('hangoutLink')
+    meet_link = event.get('hangoutLink') or (meet_space.get('meeting_uri') if meet_space else None)
     updates = {'google_event_id': event['id'], 'google_event_link': event.get('htmlLink'), 'calendar_synced': True}
     if meet_link and not iv.get('video_link'):
         updates['video_link'] = meet_link
+    if meet_space:
+        updates['meet_space_name'] = meet_space.get('space_name')
+        updates['gemini_ai_enabled'] = bool(meet_space.get('ai_enabled'))
+    updates['gemini_ai_status'] = ai_status
     await db.interviews.update_one({'id': iv['id']}, {'$set': updates})
 
 
@@ -126,6 +158,7 @@ class InterviewCreate(BaseModel):
     location: Optional[str] = None
     video_link: Optional[str] = None
     notes: Optional[str] = None
+    enable_gemini_ai: bool = True  # Auto smart notes + transcription in Meet (default ON)
 
 
 class InterviewUpdate(BaseModel):
@@ -225,6 +258,7 @@ async def create_interview(body: InterviewCreate, user: dict = Depends(require_r
         'location': body.location,
         'video_link': body.video_link,
         'notes': body.notes,
+        'enable_gemini_ai': body.enable_gemini_ai,
         'status': 'scheduled',
         'created_by': user['id'],
         'created_at': now_iso(),
