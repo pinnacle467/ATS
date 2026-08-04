@@ -8,7 +8,7 @@ import sys
 
 import requests
 
-REMOTE = 'https://job-importer.preview.emergentagent.com/api'
+REMOTE = 'https://ats-import-1.preview.emergentagent.com/api'
 ADMIN_EMAIL = 'admin@ats.com'
 ADMIN_PASSWORD = 'Admin@123'
 
