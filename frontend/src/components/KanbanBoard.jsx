@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { DndContext, DragOverlay, PointerSensor, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import { Badge } from '@/components/ui/badge';
 import { FileText, MapPin } from 'lucide-react';
+import { FitBadge } from '@/pages/CandidatesPage';
 
 const STAGE_DOT = {
   Applied: 'bg-sky-500',
@@ -19,10 +20,11 @@ function CandidateCard({ candidate, dragging }) {
       className={`bg-card rounded-lg border border-border p-3 space-y-1.5 ${dragging ? 'shadow-md scale-[1.02]' : 'hover:shadow-sm'} transition-shadow cursor-grab active:cursor-grabbing`}
     >
       <div className="flex items-center gap-1.5">
-        <span className="font-medium text-sm truncate">{candidate.name}</span>
-        <span title={candidate.resume_file_id ? 'Resume attached' : 'No resume on file'} className="inline-flex">
+        <span className="font-medium text-sm truncate flex-1">{candidate.name}</span>
+        <span title={candidate.resume_file_id ? 'Resume attached' : 'No resume on file'} className="inline-flex shrink-0">
           <FileText className={`h-3.5 w-3.5 shrink-0 ${candidate.resume_file_id ? 'text-primary' : 'text-muted-foreground/30'}`} data-testid={candidate.resume_file_id ? 'resume-indicator-yes' : 'resume-indicator-no'} />
         </span>
+        <FitBadge score={candidate.fit_score} summary={candidate.fit_score_summary} />
       </div>
       {candidate.candidate_code && (
         <div className="text-[10px] font-mono text-muted-foreground/70" data-testid={`kanban-candidate-code-${candidate.id}`}>{candidate.candidate_code}</div>
