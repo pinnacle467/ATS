@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, FileText, History, MapPin, Trash2, Upload, Users } from 'lucide-react';
+import { ArrowLeft, FileText, History, LayoutGrid, MapPin, Trash2, Upload, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import ChangeLog from '@/components/ChangeLog';
 import JobTeamPanel from '@/components/JobTeamPanel';
-import { StageBadge, SOURCES, ResumeIndicator } from '@/pages/CandidatesPage';
+import KanbanBoard from '@/components/KanbanBoard';
+import { StageBadge, SOURCES, ResumeIndicator, REJECTION_REASONS } from '@/pages/CandidatesPage';
 import { JdIndicator } from '@/pages/JobsPage';
 import { useAuth } from '@/context/AuthContext';
 import { isAdminOrHigher } from '@/lib/roles';
@@ -35,9 +38,19 @@ export default function JobDetailPage() {
   const [jdText, setJdText] = useState('');
   const [jdSaving, setJdSaving] = useState(false);
   const [detailTab, setDetailTab] = useState('overview');
+  const [pipelineView, setPipelineView] = useState(() => localStorage.getItem('ats_job_pipeline_view') || 'kanban');
+  const [kanbanReject, setKanbanReject] = useState(null);
+  const [kanbanRejectCategory, setKanbanRejectCategory] = useState('');
+  const [kanbanRejectDetail, setKanbanRejectDetail] = useState('');
   const jdFileRef = useRef();
 
   const canManage = isAdminOrHigher(user);
+  const canDragStages = ['super_admin', 'admin', 'recruiter'].includes(user?.role);
+
+  const setPipelineViewPersist = (v) => {
+    setPipelineView(v);
+    localStorage.setItem('ats_job_pipeline_view', v);
+  };
 
   const load = useCallback(() => {
     setLoading(true);
@@ -106,6 +119,46 @@ export default function JobDetailPage() {
       load();
     } catch (e) {
       toast.error(errMsg(e, 'Could not remove job description'));
+    }
+  };
+
+  const onKanbanMove = async (cand, stage) => {
+    if (stage === 'Rejected') {
+      setKanbanReject(cand);
+      setKanbanRejectCategory('');
+      setKanbanRejectDetail('');
+      return;
+    }
+    // optimistic local update
+    setCandidates((cs) => cs.map((c) => (c.id === cand.id ? { ...c, stage } : c)));
+    try {
+      await api.post(`/candidates/${cand.id}/move-stage`, { stage });
+      toast.success(`${cand.name} moved to ${stage}`);
+    } catch (e) {
+      toast.error(errMsg(e));
+      load();
+    }
+  };
+
+  const confirmKanbanReject = async () => {
+    if (!kanbanRejectCategory) {
+      toast.error('Please choose a rejection reason');
+      return;
+    }
+    if (kanbanRejectCategory === 'Not Fit' && !kanbanRejectDetail.trim()) {
+      toast.error('Please provide details for Not Fit');
+      return;
+    }
+    const reason = kanbanRejectCategory === 'Not Fit' ? `Not Fit: ${kanbanRejectDetail.trim()}` : kanbanRejectCategory;
+    try {
+      await api.post(`/candidates/${kanbanReject.id}/move-stage`, { stage: 'Rejected', reason });
+      toast.success(`${kanbanReject.name} moved to Rejected`);
+      setKanbanReject(null);
+      setKanbanRejectCategory('');
+      setKanbanRejectDetail('');
+      load();
+    } catch (e) {
+      toast.error(errMsg(e));
     }
   };
 
@@ -239,41 +292,78 @@ export default function JobDetailPage() {
       </Card>
 
       <div>
-        <h2 className="font-display text-lg font-semibold mb-3">Pipeline</h2>
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4" data-testid="job-pipeline-stages">
-          {byStage.map((stage) => (
-            <Card key={stage.name} className="shadow-none" data-testid={`job-pipeline-stage-${stage.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold flex items-center justify-between gap-2">
-                  <StageBadge stage={stage.name} />
-                  <span className="text-xs font-mono text-muted-foreground tabular-nums" data-testid={`job-pipeline-count-${stage.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}>
-                    {stage.items.length}
-                  </span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-1.5 max-h-[420px] overflow-y-auto thin-scroll">
-                {stage.items.length === 0 && (
-                  <p className="text-xs text-muted-foreground text-center py-3">No candidates</p>
-                )}
-                {stage.items.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => navigate(`/candidates/${c.id}`)}
-                    data-testid={`job-pipeline-candidate-${c.id}`}
-                    className="w-full text-left rounded-lg border border-border px-2.5 py-2 hover:bg-secondary transition-colors"
-                  >
-                    <div className="text-xs font-medium truncate flex items-center gap-1.5">
-                      <span className="truncate">{c.name}</span>
-                      <ResumeIndicator hasResume={!!c.resume_file_id} />
-                    </div>
-                    <div className="text-[11px] text-muted-foreground truncate">{c.candidate_code ? `${c.candidate_code} · ` : ''}{c.current_title || c.email || '—'}</div>
-                  </button>
-                ))}
-              </CardContent>
-            </Card>
-          ))}
+        <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+          <div>
+            <h2 className="font-display text-lg font-semibold">Pipeline</h2>
+            {canDragStages && pipelineView === 'kanban' && (
+              <p className="text-xs text-muted-foreground mt-0.5">Drag candidate cards between columns to move them across stages</p>
+            )}
+          </div>
+          <div className="flex rounded-lg border border-border overflow-hidden" data-testid="job-pipeline-view-toggle">
+            <button
+              type="button"
+              onClick={() => setPipelineViewPersist('kanban')}
+              data-testid="job-pipeline-view-kanban"
+              className={`px-3 py-1.5 text-sm flex items-center gap-1.5 transition-colors ${pipelineView === 'kanban' ? 'bg-primary text-primary-foreground' : 'bg-card hover:bg-secondary'}`}
+            >
+              <LayoutGrid className="h-3.5 w-3.5" /> Kanban
+            </button>
+            <button
+              type="button"
+              onClick={() => setPipelineViewPersist('grid')}
+              data-testid="job-pipeline-view-grid"
+              className={`px-3 py-1.5 text-sm flex items-center gap-1.5 transition-colors ${pipelineView === 'grid' ? 'bg-primary text-primary-foreground' : 'bg-card hover:bg-secondary'}`}
+            >
+              <Users className="h-3.5 w-3.5" /> Grid
+            </button>
+          </div>
         </div>
+
+        {pipelineView === 'kanban' ? (
+          <div data-testid="job-pipeline-kanban">
+            <KanbanBoard
+              stages={stageNames}
+              candidates={candidates}
+              onMove={onKanbanMove}
+              canDrag={canDragStages}
+            />
+          </div>
+        ) : (
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4" data-testid="job-pipeline-stages">
+            {byStage.map((stage) => (
+              <Card key={stage.name} className="shadow-none" data-testid={`job-pipeline-stage-${stage.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-semibold flex items-center justify-between gap-2">
+                    <StageBadge stage={stage.name} />
+                    <span className="text-xs font-mono text-muted-foreground tabular-nums" data-testid={`job-pipeline-count-${stage.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}>
+                      {stage.items.length}
+                    </span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-1.5 max-h-[420px] overflow-y-auto thin-scroll">
+                  {stage.items.length === 0 && (
+                    <p className="text-xs text-muted-foreground text-center py-3">No candidates</p>
+                  )}
+                  {stage.items.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => navigate(`/candidates/${c.id}`)}
+                      data-testid={`job-pipeline-candidate-${c.id}`}
+                      className="w-full text-left rounded-lg border border-border px-2.5 py-2 hover:bg-secondary transition-colors"
+                    >
+                      <div className="text-xs font-medium truncate flex items-center gap-1.5">
+                        <span className="truncate">{c.name}</span>
+                        <ResumeIndicator hasResume={!!c.resume_file_id} />
+                      </div>
+                      <div className="text-[11px] text-muted-foreground truncate">{c.candidate_code ? `${c.candidate_code} · ` : ''}{c.current_title || c.email || '—'}</div>
+                    </button>
+                  ))}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Team & Access + Change Log (Admin+ only) */}
@@ -291,6 +381,32 @@ export default function JobDetailPage() {
           </div>
         </div>
       )}
+
+      {/* Kanban drag-to-Rejected dialog */}
+      <Dialog open={!!kanbanReject} onOpenChange={(o) => !o && setKanbanReject(null)}>
+        <DialogContent className="sm:max-w-md" data-testid="job-kanban-reject-dialog">
+          <DialogHeader><DialogTitle>Reject {kanbanReject?.name}</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label>Rejection reason</Label>
+              <Select value={kanbanRejectCategory} onValueChange={setKanbanRejectCategory}>
+                <SelectTrigger data-testid="job-kanban-reject-reason-select"><SelectValue placeholder="Choose a reason" /></SelectTrigger>
+                <SelectContent>{REJECTION_REASONS.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            {kanbanRejectCategory === 'Not Fit' && (
+              <div className="space-y-1.5">
+                <Label>Details</Label>
+                <Textarea value={kanbanRejectDetail} onChange={(e) => setKanbanRejectDetail(e.target.value)} placeholder="e.g. Not a technical fit for the role" data-testid="job-kanban-reject-detail-textarea" />
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setKanbanReject(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={confirmKanbanReject} data-testid="job-kanban-reject-confirm-button">Reject Candidate</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={jdDialogOpen} onOpenChange={setJdDialogOpen}>
         <DialogContent className="sm:max-w-lg" data-testid="job-jd-dialog">
