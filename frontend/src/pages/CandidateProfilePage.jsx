@@ -41,7 +41,9 @@ import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
 import { StageBadge, REJECTION_REASONS, SOURCES } from '@/pages/CandidatesPage';
 import ChangeLog from '@/components/ChangeLog';
+import RoundFeedbackSection from '@/components/RoundFeedbackSection';
 import SendEmailDialog from '@/components/SendEmailDialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/context/AuthContext';
 import { isAdminOrHigher } from '@/lib/roles';
 import { api, errMsg } from '@/lib/api';
@@ -656,7 +658,13 @@ export default function CandidateProfilePage() {
         <div className="bg-red-50 border border-red-200 text-red-800 text-sm rounded-xl px-4 py-3">Rejected: {cand.rejection_reason}</div>
       )}
 
-      <div className="grid lg:grid-cols-3 gap-5">
+      <Tabs defaultValue="overview" className="w-full" data-testid="candidate-tabs">
+        <TabsList data-testid="candidate-tabs-list">
+          <TabsTrigger value="overview" data-testid="candidate-tab-overview">Overview</TabsTrigger>
+          <TabsTrigger value="feedback" data-testid="candidate-tab-feedback">Interviews & Feedback</TabsTrigger>
+        </TabsList>
+        <TabsContent value="overview" className="mt-4 space-y-5">
+        <div className="grid lg:grid-cols-3 gap-5">
         {/* Left: details + resume */}
         <div className="lg:col-span-2 space-y-5">
           <Card className="shadow-none">
@@ -1072,6 +1080,16 @@ export default function CandidateProfilePage() {
           </CardContent>
         </Card>
       )}
+        </TabsContent>
+        <TabsContent value="feedback" className="mt-4">
+          <RoundFeedbackSection
+            candidateId={cand.id}
+            roundFeedback={cand.round_feedback || []}
+            canEdit={isRecruiter}
+            onChanged={load}
+          />
+        </TabsContent>
+      </Tabs>
 
       {/* Reject dialog */}
       <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>

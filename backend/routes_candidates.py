@@ -377,6 +377,80 @@ async def move_stage(candidate_id: str, body: StageMove, user: dict = Depends(re
     return clean(await db.candidates.find_one({'id': candidate_id}, {'_id': 0}))
 
 
+class RoundFeedback(BaseModel):
+    feedback: Optional[str] = None
+    interview_date: Optional[str] = None
+    interviewer_name: Optional[str] = None
+    duration_min: Optional[int] = None
+
+
+@router.put('/{candidate_id}/round-feedback/{round_num}')
+async def upsert_round_feedback(
+    candidate_id: str,
+    round_num: int,
+    body: RoundFeedback,
+    user: dict = Depends(require_roles('admin', 'recruiter')),
+):
+    if round_num not in (1, 2, 3):
+        raise HTTPException(status_code=400, detail='Round must be 1, 2, or 3')
+    c = await db.candidates.find_one({'id': candidate_id})
+    if not c:
+        raise HTTPException(status_code=404, detail='Candidate not found')
+    existing = list(c.get('round_feedback') or [])
+    # Find or create the entry for this round
+    entry = next((r for r in existing if r.get('round') == round_num), None)
+    if entry is None:
+        entry = {'round': round_num, 'created_at': now_iso(), 'created_by': user['id'], 'created_by_name': user.get('name', '')}
+        existing.append(entry)
+    entry['feedback'] = (body.feedback or '').strip() or None
+    entry['interview_date'] = (body.interview_date or '').strip() or None
+    entry['interviewer_name'] = (body.interviewer_name or '').strip() or None
+    entry['duration_min'] = body.duration_min if body.duration_min and body.duration_min > 0 else None
+    entry['updated_at'] = now_iso()
+    entry['updated_by'] = user['id']
+    entry['updated_by_name'] = user.get('name', '')
+    existing.sort(key=lambda r: r.get('round', 0))
+    await db.candidates.update_one(
+        {'id': candidate_id},
+        {'$set': {'round_feedback': existing, 'updated_at': now_iso()}},
+    )
+    await log_activity(
+        user,
+        'round_feedback',
+        f"updated Round {round_num} feedback for {c['name']}",
+        candidate_id=candidate_id,
+        job_id=c.get('job_id'),
+    )
+    await log_audit(user, 'round_feedback', 'candidate', candidate_id, f'Round {round_num} updated')
+    return {'ok': True, 'round': round_num, 'entry': entry}
+
+
+@router.delete('/{candidate_id}/round-feedback/{round_num}')
+async def delete_round_feedback(
+    candidate_id: str,
+    round_num: int,
+    user: dict = Depends(require_roles('admin', 'recruiter')),
+):
+    if round_num not in (1, 2, 3):
+        raise HTTPException(status_code=400, detail='Round must be 1, 2, or 3')
+    c = await db.candidates.find_one({'id': candidate_id})
+    if not c:
+        raise HTTPException(status_code=404, detail='Candidate not found')
+    existing = [r for r in (c.get('round_feedback') or []) if r.get('round') != round_num]
+    await db.candidates.update_one(
+        {'id': candidate_id},
+        {'$set': {'round_feedback': existing, 'updated_at': now_iso()}},
+    )
+    await log_activity(
+        user,
+        'round_feedback',
+        f"cleared Round {round_num} feedback for {c['name']}",
+        candidate_id=candidate_id,
+        job_id=c.get('job_id'),
+    )
+    return {'ok': True, 'round': round_num}
+
+
 @router.post('/bulk-action')
 async def bulk_action(body: BulkAction, user: dict = Depends(require_roles('admin', 'recruiter'))):
     if body.action == 'delete' and not is_admin_or_higher(user):
