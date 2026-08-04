@@ -8,9 +8,9 @@ from googleapiclient.discovery import build
 
 from database import db
 
-CLIENT_ID = os.environ['GOOGLE_CLIENT_ID']
-CLIENT_SECRET = os.environ['GOOGLE_CLIENT_SECRET']
-REDIRECT_URI = f"{os.environ['APP_BASE_URL']}/api/oauth/calendar/callback"
+CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')
+CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', '')
+REDIRECT_URI = f"{os.environ.get('APP_BASE_URL', '')}/api/oauth/calendar/callback"
 SCOPES = ['https://www.googleapis.com/auth/calendar', 'https://www.googleapis.com/auth/gmail.send',
           'https://www.googleapis.com/auth/gmail.readonly',
           'https://www.googleapis.com/auth/meetings.space.created',
