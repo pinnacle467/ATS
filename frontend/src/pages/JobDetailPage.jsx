@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, FileText, History, LayoutGrid, MapPin, Trash2, Upload, Users } from 'lucide-react';
+import { ArrowLeft, FileText, History, LayoutGrid, MapPin, Search, Sparkles, Trash2, Upload, Users, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -39,6 +40,8 @@ export default function JobDetailPage() {
   const [jdSaving, setJdSaving] = useState(false);
   const [detailTab, setDetailTab] = useState('overview');
   const [pipelineView, setPipelineView] = useState(() => localStorage.getItem('ats_job_pipeline_view') || 'kanban');
+  const [pipelineSearch, setPipelineSearch] = useState('');
+  const [sortByFit, setSortByFit] = useState(() => localStorage.getItem('ats_job_pipeline_sort_by_fit') === '1');
   const [kanbanReject, setKanbanReject] = useState(null);
   const [kanbanRejectCategory, setKanbanRejectCategory] = useState('');
   const [kanbanRejectDetail, setKanbanRejectDetail] = useState('');
@@ -51,6 +54,46 @@ export default function JobDetailPage() {
     setPipelineView(v);
     localStorage.setItem('ats_job_pipeline_view', v);
   };
+
+  const toggleSortByFit = () => {
+    setSortByFit((prev) => {
+      const next = !prev;
+      localStorage.setItem('ats_job_pipeline_sort_by_fit', next ? '1' : '0');
+      return next;
+    });
+  };
+
+  // Filtered + optionally sorted candidate list used by both Kanban and Grid views
+  const displayCandidates = useMemo(() => {
+    const term = pipelineSearch.trim().toLowerCase();
+    let list = candidates;
+    if (term) {
+      list = list.filter((c) => {
+        const hay = [
+          c.name,
+          c.email,
+          c.current_title,
+          c.current_company,
+          c.location,
+          c.candidate_code,
+          ...(c.skills || []),
+          ...(c.tags || []),
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        return hay.includes(term);
+      });
+    }
+    if (sortByFit) {
+      list = [...list].sort((a, b) => {
+        const av = typeof a.fit_score === 'number' ? a.fit_score : -1;
+        const bv = typeof b.fit_score === 'number' ? b.fit_score : -1;
+        return bv - av;
+      });
+    }
+    return list;
+  }, [candidates, pipelineSearch, sortByFit]);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -183,7 +226,7 @@ export default function JobDetailPage() {
   const stageNames = job.stages && job.stages.length ? job.stages : DEFAULT_STAGES;
   const byStage = stageNames.map((s) => ({
     name: s,
-    items: candidates.filter((c) => c.stage === s),
+    items: displayCandidates.filter((c) => c.stage === s),
   }));
   const activeCount = candidates.filter((c) => c.status === 'active').length;
 
@@ -319,11 +362,52 @@ export default function JobDetailPage() {
           </div>
         </div>
 
+        {/* Quick filter + Sort by fit toolbar */}
+        <div className="flex items-center gap-2 mb-3 flex-wrap" data-testid="job-pipeline-toolbar">
+          <div className="relative flex-1 min-w-[220px] max-w-md">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              value={pipelineSearch}
+              onChange={(e) => setPipelineSearch(e.target.value)}
+              placeholder="Quick filter — name, email, title, skill, tag…"
+              className="pl-8 h-9 text-sm"
+              data-testid="job-pipeline-search-input"
+            />
+            {pipelineSearch && (
+              <button
+                type="button"
+                onClick={() => setPipelineSearch('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary"
+                data-testid="job-pipeline-search-clear"
+                aria-label="Clear search"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={toggleSortByFit}
+            data-testid="job-pipeline-sort-by-fit-toggle"
+            className={`inline-flex items-center gap-1.5 h-9 px-3 rounded-md text-sm border transition-colors ${sortByFit ? 'bg-primary text-primary-foreground border-primary' : 'bg-card border-border hover:bg-secondary'}`}
+            title="Sort candidates by AI fit score (highest first) within each stage"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            Sort by Fit
+          </button>
+          {(pipelineSearch || sortByFit) && (
+            <span className="text-xs text-muted-foreground" data-testid="job-pipeline-filter-summary">
+              Showing {displayCandidates.length} of {candidates.length}
+              {sortByFit && ' · sorted by fit'}
+            </span>
+          )}
+        </div>
+
         {pipelineView === 'kanban' ? (
           <div data-testid="job-pipeline-kanban">
             <KanbanBoard
               stages={stageNames}
-              candidates={candidates}
+              candidates={displayCandidates}
               onMove={onKanbanMove}
               canDrag={canDragStages}
             />

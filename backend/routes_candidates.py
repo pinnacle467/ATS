@@ -382,6 +382,7 @@ class RoundFeedback(BaseModel):
     interview_date: Optional[str] = None
     interviewer_name: Optional[str] = None
     duration_min: Optional[int] = None
+    verdict: Optional[str] = None  # 'recommend' | 'neutral' | 'reject' | None
 
 
 @router.put('/{candidate_id}/round-feedback/{round_num}')
@@ -393,6 +394,8 @@ async def upsert_round_feedback(
 ):
     if round_num not in (1, 2, 3):
         raise HTTPException(status_code=400, detail='Round must be 1, 2, or 3')
+    if body.verdict and body.verdict not in ('recommend', 'neutral', 'reject'):
+        raise HTTPException(status_code=400, detail='verdict must be recommend, neutral, or reject')
     c = await db.candidates.find_one({'id': candidate_id})
     if not c:
         raise HTTPException(status_code=404, detail='Candidate not found')
@@ -406,6 +409,7 @@ async def upsert_round_feedback(
     entry['interview_date'] = (body.interview_date or '').strip() or None
     entry['interviewer_name'] = (body.interviewer_name or '').strip() or None
     entry['duration_min'] = body.duration_min if body.duration_min and body.duration_min > 0 else None
+    entry['verdict'] = body.verdict or None
     entry['updated_at'] = now_iso()
     entry['updated_by'] = user['id']
     entry['updated_by_name'] = user.get('name', '')
