@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DndContext, DragOverlay, PointerSensor, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import { Badge } from '@/components/ui/badge';
-import { FileText, MapPin } from 'lucide-react';
+import { FileText, MapPin, ThumbsDown, ThumbsUp, Circle } from 'lucide-react';
 import { FitBadge } from '@/pages/CandidatesPage';
 
 const STAGE_DOT = {
@@ -13,6 +13,38 @@ const STAGE_DOT = {
   Hired: 'bg-green-600',
   Rejected: 'bg-red-500',
 };
+
+const VERDICT_STYLE = {
+  recommend: { chip: 'bg-emerald-100 text-emerald-800 ring-emerald-200', Icon: ThumbsUp, label: 'Recommend' },
+  neutral: { chip: 'bg-amber-100 text-amber-800 ring-amber-200', Icon: Circle, label: 'Neutral' },
+  reject: { chip: 'bg-rose-100 text-rose-800 ring-rose-200', Icon: ThumbsDown, label: 'Reject' },
+};
+
+function RoundVerdicts({ roundFeedback }) {
+  if (!roundFeedback || !roundFeedback.length) return null;
+  const chips = [1, 2, 3]
+    .map((r) => {
+      const entry = roundFeedback.find((x) => x && x.round === r);
+      if (!entry || !entry.verdict) return null;
+      const style = VERDICT_STYLE[entry.verdict];
+      if (!style) return null;
+      const Icon = style.Icon;
+      return (
+        <span
+          key={r}
+          title={`Round ${r} — ${style.label}${entry.interviewer_name ? ` (${entry.interviewer_name})` : ''}`}
+          data-testid={`kanban-verdict-r${r}-${entry.verdict}`}
+          className={`inline-flex items-center gap-0.5 rounded-full ring-1 px-1.5 h-4 text-[10px] font-semibold ${style.chip}`}
+        >
+          R{r}
+          <Icon className="h-2.5 w-2.5" strokeWidth={2.5} />
+        </span>
+      );
+    })
+    .filter(Boolean);
+  if (chips.length === 0) return null;
+  return <div className="flex flex-wrap gap-1 pt-0.5" data-testid="kanban-round-verdicts">{chips}</div>;
+}
 
 function CandidateCard({ candidate, dragging }) {
   return (
@@ -33,6 +65,7 @@ function CandidateCard({ candidate, dragging }) {
       {candidate.location && (
         <div className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3" />{candidate.location}</div>
       )}
+      <RoundVerdicts roundFeedback={candidate.round_feedback} />
       <div className="flex flex-wrap gap-1 pt-0.5">
         {(candidate.tags || []).slice(0, 3).map((t) => (
           <Badge key={t} variant="secondary" className="text-[10px] px-1.5 py-0">{t}</Badge>
