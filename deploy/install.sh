@@ -106,6 +106,9 @@ if ! id -u "$APP_USER" >/dev/null 2>&1; then
 fi
 
 log "Cloning repo into $APP_DIR…"
+# Tell git the repo is trustworthy regardless of ownership (installer may run as root
+# on a repo cloned/chowned by a previous run)
+git config --global --add safe.directory "$APP_DIR" || true
 if [[ ! -d "$APP_DIR/.git" ]]; then
   mkdir -p "$APP_DIR"
   git clone --branch "$BRANCH" "$REPO_URL" "$APP_DIR"
@@ -114,6 +117,8 @@ else
   git -C "$APP_DIR" reset --hard "origin/$BRANCH"
 fi
 chown -R "$APP_USER:$APP_USER" "$APP_DIR"
+# Also mark the dir safe for the app user so subsequent deploy.sh runs don't trip
+sudo -u "$APP_USER" git config --global --add safe.directory "$APP_DIR" || true
 
 # ---------- 5. Backend .env ---------------------------------------------------
 log "Writing backend/.env…"
