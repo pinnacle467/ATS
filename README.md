@@ -152,7 +152,9 @@ mongorestore --drop --nsFrom='sprout_ats.*' --nsTo='sprout_ats.*' /path/to/mongo
 | `APP_BASE_URL` | ✅ | Public URL used to build OAuth redirect + email links |
 | `CORS_ORIGINS` | ✅ | `*` for dev, comma-list for prod |
 | `JWT_SECRET` | ✅ | 32+ random chars — regenerate per env |
-| `EMERGENT_LLM_KEY` | optional | Enables AI resume parsing / fit scoring / reply parsing |
+| `XAI_API_KEY` | ✅ | Powers all LLM features (resume parsing, fit scoring, reply parsing, career-portal preview) via Grok 4.3 |
+| `GROK_MODEL` | optional | Defaults to `grok-4.3`. Override if xAI ships a newer model |
+| `EMERGENT_LLM_KEY` | optional | Legacy — kept for future rollback. Not called on the hot path anymore |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | optional | Enables Google Calendar + Meet |
 | `RESEND_API_KEY` | optional | Enables outbound email |
 | `SENDER_EMAIL` | optional | e.g. `Pinnacle ATS <hi@yourdomain.com>` |

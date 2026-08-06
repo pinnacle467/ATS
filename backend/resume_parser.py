@@ -1,12 +1,9 @@
 """Resume parsing core — proven in POC (/app/tests/poc_resume_parse.py)."""
 import io
 import json
-import os
 import re
 
-from emergentintegrations.llm.chat import LlmChat, UserMessage
-
-from llm_helper import send_with_retry
+from grok_client import grok_json
 
 PARSE_SYSTEM_PROMPT = """You are an expert resume parser. You receive raw text extracted from a resume (PDF/DOCX) and return ONLY a valid JSON object — no markdown fences, no commentary.
 
@@ -75,23 +72,15 @@ EMPTY_PARSE = {
 
 
 async def parse_resume_text(text: str, session_label: str) -> dict:
-    api_key = os.environ['EMERGENT_LLM_KEY']
-    chat = LlmChat(
-        api_key=api_key,
-        session_id=f'ats-parse-{session_label}',
-        system_message=PARSE_SYSTEM_PROMPT,
-    ).with_model('openai', 'gpt-5.4-mini')
-
-    msg = UserMessage(text=f'Parse this resume text:\n\n{text[:15000]}')
-    resp = await send_with_retry(chat, msg)
-    raw = _strip_fences(resp if isinstance(resp, str) else str(resp))
     try:
-        parsed = json.loads(raw)
+        parsed = await grok_json(
+            system=PARSE_SYSTEM_PROMPT,
+            user=f'Parse this resume text:\n\n{text[:15000]}',
+            reasoning_effort='none',
+            max_tokens=6000,
+        )
     except json.JSONDecodeError:
-        msg2 = UserMessage(text='Your previous output was not valid JSON. Return ONLY the raw JSON object, nothing else.')
-        resp2 = await send_with_retry(chat, msg2)
-        raw2 = _strip_fences(resp2 if isinstance(resp2, str) else str(resp2))
-        parsed = json.loads(raw2)
+        return {**EMPTY_PARSE}
     merged = {**EMPTY_PARSE, **{k: v for k, v in parsed.items() if k in EMPTY_PARSE}}
     return merged
 

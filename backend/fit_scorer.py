@@ -1,13 +1,8 @@
 """Job-fit scoring: compares a candidate's resume/profile against a job's JD via LLM."""
 import base64
-import json
-import os
-import re
-
-from emergentintegrations.llm.chat import LlmChat, UserMessage
 
 from database import db
-from llm_helper import send_with_retry
+from grok_client import grok_json
 from resume_parser import extract_text_from_bytes
 from utils import now_iso
 
@@ -17,25 +12,12 @@ Return ONLY a valid JSON object — no markdown fences, no commentary:
 {"score": integer 0-100, "summary": "1-2 sentence explanation of the fit, mentioning key matches or gaps"}"""
 
 
-def _strip_fences(raw: str) -> str:
-    raw = raw.strip()
-    if raw.startswith('```'):
-        raw = re.sub(r'^```(?:json)?\s*', '', raw)
-        raw = re.sub(r'\s*```$', '', raw)
-    return raw
-
-
 async def _score_text(resume_text: str, jd_text: str, session_label: str) -> dict:
-    api_key = os.environ['EMERGENT_LLM_KEY']
-    chat = LlmChat(
-        api_key=api_key,
-        session_id=f'ats-fit-{session_label}',
-        system_message=FIT_SYSTEM_PROMPT,
-    ).with_model('openai', 'gpt-5.4-mini')
-    msg = UserMessage(text=f'JOB DESCRIPTION:\n{jd_text[:8000]}\n\nCANDIDATE RESUME/PROFILE:\n{resume_text[:8000]}')
-    resp = await send_with_retry(chat, msg)
-    raw = _strip_fences(resp if isinstance(resp, str) else str(resp))
-    parsed = json.loads(raw)
+    parsed = await grok_json(
+        system=FIT_SYSTEM_PROMPT,
+        user=f'JOB DESCRIPTION:\n{jd_text[:8000]}\n\nCANDIDATE RESUME/PROFILE:\n{resume_text[:8000]}',
+        reasoning_effort='low',
+    )
     try:
         score = max(0, min(100, int(parsed.get('score'))))
     except (TypeError, ValueError):
