@@ -40,20 +40,48 @@ grep -qi 'ubuntu' /etc/os-release || warn "Tested on Ubuntu 22.04 — proceed at
 export DEBIAN_FRONTEND=noninteractive
 
 # ---------- 1. System packages ------------------------------------------------
-log "Installing system packages (git, python3.11, nginx, curl, build-essential)…"
+log "Installing system packages (git, python, nginx, curl, build-essential)…"
 apt-get update -y
 apt-get install -y --no-install-recommends \
   ca-certificates curl gnupg lsb-release git build-essential \
-  python3.11 python3.11-venv python3.11-dev python3-pip \
   nginx ufw software-properties-common
 
-# ---------- 2. MongoDB 7 ------------------------------------------------------
+# Pick the newest Python 3.11+ available (Ubuntu 22.04 → 3.11, Ubuntu 24.04 → 3.12)
+if command -v python3.11 >/dev/null 2>&1; then
+  PYBIN=python3.11
+elif command -v python3.12 >/dev/null 2>&1; then
+  PYBIN=python3.12
+else
+  # Try installing 3.11 via deadsnakes PPA (Jammy). On Noble the default python3 is already 3.12.
+  add-apt-repository -y ppa:deadsnakes/ppa || true
+  apt-get update -y || true
+  apt-get install -y python3.11 python3.11-venv python3.11-dev || apt-get install -y python3 python3-venv python3-dev
+  PYBIN=$(command -v python3.11 || command -v python3.12 || command -v python3)
+fi
+# Ensure the venv module for the picked python is installed
+PYVER=$("$PYBIN" -c "import sys;print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+apt-get install -y "python${PYVER}-venv" "python${PYVER}-dev" || true
+log "Using Python: $PYBIN ($PYVER)"
+
+# ---------- 2. MongoDB (auto-picks 7 for Jammy, 8 for Noble) -----------------
 if ! command -v mongod >/dev/null 2>&1; then
-  log "Installing MongoDB 7…"
-  curl -fsSL https://pgp.mongodb.com/server-7.0.asc | gpg -o /usr/share/keyrings/mongodb-server-7.0.gpg --dearmor --yes
-  UBUNTU_CODENAME=$(lsb_release -sc)
-  echo "deb [signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg] https://repo.mongodb.org/apt/ubuntu ${UBUNTU_CODENAME}/mongodb-org/7.0 multiverse" \
-    > /etc/apt/sources.list.d/mongodb-org-7.0.list
+  UBUNTU_CODENAME="$(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")"
+  case "$UBUNTU_CODENAME" in
+    noble)  MONGO_VERSION=8.0 ;;
+    jammy)  MONGO_VERSION=7.0 ;;
+    focal)  MONGO_VERSION=7.0 ;;
+    *)      warn "Unknown Ubuntu codename '$UBUNTU_CODENAME' — defaulting to MongoDB 7.0 on jammy repo"
+            UBUNTU_CODENAME=jammy
+            MONGO_VERSION=7.0 ;;
+  esac
+  log "Installing MongoDB $MONGO_VERSION for Ubuntu $UBUNTU_CODENAME…"
+  # Clean any stale mongo apt files from previous failed runs
+  rm -f /etc/apt/sources.list.d/mongodb-org-*.list /usr/share/keyrings/mongodb-server-*.gpg
+
+  curl -fsSL "https://pgp.mongodb.com/server-${MONGO_VERSION}.asc" \
+    | gpg -o "/usr/share/keyrings/mongodb-server-${MONGO_VERSION}.gpg" --dearmor --yes
+  echo "deb [signed-by=/usr/share/keyrings/mongodb-server-${MONGO_VERSION}.gpg] https://repo.mongodb.org/apt/ubuntu ${UBUNTU_CODENAME}/mongodb-org/${MONGO_VERSION} multiverse" \
+    > "/etc/apt/sources.list.d/mongodb-org-${MONGO_VERSION}.list"
   apt-get update -y
   apt-get install -y mongodb-org
 else
@@ -117,7 +145,7 @@ chown "$APP_USER:$APP_USER" "$APP_DIR/frontend/.env"
 log "Creating Python virtualenv + installing backend deps…"
 sudo -u "$APP_USER" bash -c "
   cd '$APP_DIR' &&
-  python3.11 -m venv .venv &&
+  $PYBIN -m venv .venv &&
   .venv/bin/pip install --upgrade pip wheel &&
   .venv/bin/pip install --extra-index-url https://d33sy5i8bnduwe.cloudfront.net/simple/ -r backend/requirements.txt
 "

@@ -48,10 +48,11 @@ log "At commit $CURRENT_SHA"
 
 # ---------- 2. Backend deps --------------------------------------------------
 log "Refreshing Python backend deps…"
+PYBIN="$(command -v python3.11 || command -v python3.12 || command -v python3)"
 sudo -u "$APP_USER" bash -c "
   set -e
   cd '$APP_DIR'
-  [[ -d .venv ]] || python3.11 -m venv .venv
+  [[ -d .venv ]] || $PYBIN -m venv .venv
   .venv/bin/pip install --quiet --upgrade pip wheel
   .venv/bin/pip install --quiet --extra-index-url https://d33sy5i8bnduwe.cloudfront.net/simple/ -r backend/requirements.txt
 "
