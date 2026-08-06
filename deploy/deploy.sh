@@ -54,7 +54,13 @@ sudo -u "$APP_USER" bash -c "
   cd '$APP_DIR'
   [[ -d .venv ]] || $PYBIN -m venv .venv
   .venv/bin/pip install --quiet --upgrade pip wheel
-  .venv/bin/pip install --quiet --extra-index-url https://d33sy5i8bnduwe.cloudfront.net/simple/ -r backend/requirements.txt
+
+  # 3-step install: emergentintegrations + everything else + specific litellm wheel
+  .venv/bin/pip install --quiet --extra-index-url https://d33sy5i8bnduwe.cloudfront.net/simple/ 'emergentintegrations==0.2.0'
+  grep -vE '^(emergentintegrations|litellm[[:space:]@])' backend/requirements.txt > /tmp/ats-reqs-noconflict.txt
+  .venv/bin/pip install --quiet -r /tmp/ats-reqs-noconflict.txt
+  rm -f /tmp/ats-reqs-noconflict.txt
+  .venv/bin/pip install --quiet --no-deps 'https://customer-assets.emergentagent.com/internal-asset/library/litellm-1.80.0-py3-none-any.whl'
 "
 
 # ---------- 3. Frontend build ------------------------------------------------

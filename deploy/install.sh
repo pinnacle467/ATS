@@ -143,11 +143,25 @@ chown "$APP_USER:$APP_USER" "$APP_DIR/frontend/.env"
 
 # ---------- 7. Backend virtualenv + Python deps -------------------------------
 log "Creating Python virtualenv + installing backend deps…"
+# NOTE: emergentintegrations 0.2.0 and the URL-pinned litellm wheel in
+# requirements.txt cause pip's resolver to conflict when installed in one shot.
+# Three-step workaround (verified working):
+#   1. install emergentintegrations first (pulls a compatible litellm)
+#   2. install the rest of requirements.txt with those two lines stripped out
+#   3. force-install the exact litellm wheel URL with --no-deps
 sudo -u "$APP_USER" bash -c "
-  cd '$APP_DIR' &&
-  $PYBIN -m venv .venv &&
-  .venv/bin/pip install --upgrade pip wheel &&
-  .venv/bin/pip install --extra-index-url https://d33sy5i8bnduwe.cloudfront.net/simple/ -r backend/requirements.txt
+  set -e
+  cd '$APP_DIR'
+  $PYBIN -m venv .venv
+  .venv/bin/pip install --upgrade pip wheel
+
+  .venv/bin/pip install --extra-index-url https://d33sy5i8bnduwe.cloudfront.net/simple/ 'emergentintegrations==0.2.0'
+
+  grep -vE '^(emergentintegrations|litellm[[:space:]@])' backend/requirements.txt > /tmp/ats-reqs-noconflict.txt
+  .venv/bin/pip install -r /tmp/ats-reqs-noconflict.txt
+  rm -f /tmp/ats-reqs-noconflict.txt
+
+  .venv/bin/pip install --no-deps 'https://customer-assets.emergentagent.com/internal-asset/library/litellm-1.80.0-py3-none-any.whl'
 "
 
 # ---------- 8. Frontend build -------------------------------------------------
