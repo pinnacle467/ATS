@@ -78,6 +78,14 @@ agenthub/agents/youtube/db
 
 memory/test_credentials.md
 
+# Emergent build system artifacts (safe to keep private)
+.emergent/
+test_result.md
+test_reports/
+.ruff_cache/
+.pytest_cache/
+*.log
+
 # Mobile development
 android-sdk/frontend/node_modules/.cache/default-development/5.pack
 frontend/node_modules/.cache/default-development/5.pack
@@ -88,3 +96,9 @@ frontend/node_modules/.cache/default-development/6.pack
 credentials.json
 *.key
 .credentials
+
+# Large local backups — keep the smallest seed only, exclude the rest
+backups/**/*.bson
+backups/**/*.metadata.json
+backups/**/oplog.rs*
+backups/sprout_ats_*/
