@@ -122,9 +122,27 @@ chown -R "$APP_USER:$APP_USER" "$APP_DIR"
 # Also mark the dir safe for the app user so subsequent deploy.sh runs don't trip
 sudo -u "$APP_USER" git config --global --add safe.directory "$APP_DIR" || true
 
-# ---------- 5. Backend .env ---------------------------------------------------
+# ---------- 5. Backend .env (idempotent — never overwrites existing keys) ----
 log "Writing backend/.env…"
-cat > "$APP_DIR/backend/.env" <<EOF
+ENV_FILE="$APP_DIR/backend/.env"
+
+# Pull existing values (if the .env already exists) so a re-install doesn't clobber keys
+_read_env() {
+  local k="$1"; local f="$2"
+  [[ -f "$f" ]] && grep -E "^${k}=" "$f" | tail -n1 | sed "s/^${k}=//" || true
+}
+EMERGENT_LLM_KEY_VAL="${EMERGENT_LLM_KEY_VAL:-$(_read_env EMERGENT_LLM_KEY "$ENV_FILE")}"
+XAI_API_KEY_VAL="${XAI_API_KEY_VAL:-$(_read_env XAI_API_KEY "$ENV_FILE")}"
+GROK_MODEL_VAL="${GROK_MODEL_VAL:-$(_read_env GROK_MODEL "$ENV_FILE")}"
+GROK_MODEL_VAL="${GROK_MODEL_VAL:-grok-4.3}"
+GOOGLE_CLIENT_ID_VAL="${GOOGLE_CLIENT_ID_VAL:-$(_read_env GOOGLE_CLIENT_ID "$ENV_FILE")}"
+GOOGLE_CLIENT_SECRET_VAL="${GOOGLE_CLIENT_SECRET_VAL:-$(_read_env GOOGLE_CLIENT_SECRET "$ENV_FILE")}"
+RESEND_API_KEY_VAL="${RESEND_API_KEY_VAL:-$(_read_env RESEND_API_KEY "$ENV_FILE")}"
+# Keep JWT secret if one already exists (rotating it logs everyone out)
+_EXISTING_JWT="$(_read_env JWT_SECRET "$ENV_FILE")"
+[[ -n "$_EXISTING_JWT" ]] && JWT_SECRET_VAL="$_EXISTING_JWT"
+
+cat > "$ENV_FILE" <<EOF
 MONGO_URL=mongodb://localhost:27017
 DB_NAME=${DB_NAME_VAR}
 CORS_ORIGINS=*
@@ -139,8 +157,13 @@ RESEND_API_KEY=${RESEND_API_KEY_VAL}
 SENDER_EMAIL=Pinnacle ATS <onboarding@resend.dev>
 SENDER_REPLY_TO=
 EOF
-chown "$APP_USER:$APP_USER" "$APP_DIR/backend/.env"
-chmod 600 "$APP_DIR/backend/.env"
+chown "$APP_USER:$APP_USER" "$ENV_FILE"
+chmod 600 "$ENV_FILE"
+
+# Warn LOUDLY if key AI features will be broken
+if [[ -z "$XAI_API_KEY_VAL" ]]; then
+  warn "XAI_API_KEY is empty — resume parsing, fit scoring, and reply parsing will fail. Paste the key into $ENV_FILE and run:  sudo systemctl restart ats-backend"
+fi
 
 # ---------- 6. Frontend .env --------------------------------------------------
 log "Writing frontend/.env…"
