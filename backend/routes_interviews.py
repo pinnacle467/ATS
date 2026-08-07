@@ -11,7 +11,7 @@ from auth import get_current_user, require_roles
 from database import db
 from google_calendar import create_event, delete_event, free_busy, get_credentials_for_user, update_event
 from google_meet import create_ai_meet_space, has_meet_ai_scopes
-from feedback_emails import send_scorecard_request
+from feedback_emails import send_scorecard_request  # noqa: F401 -- kept for future manual-resend endpoint
 from permissions import is_admin_or_higher, is_interview_panel, is_vendor
 from utils import clean, log_activity, log_audit, new_id, notify, now_iso
 
@@ -308,7 +308,8 @@ async def complete_interview(interview_id: str, user: dict = Depends(get_current
         for iid in iv.get('interviewer_ids', []):
             await notify(iid, 'feedback', f"Feedback pending for your interview with {cand['name'] if cand else 'candidate'}", '/interviews')
         await log_activity(user, 'interview_completed', f"marked interview with {cand['name'] if cand else 'candidate'} as completed", candidate_id=iv['candidate_id'])
-        await send_scorecard_request(updated_iv)
+        # NOTE: no immediate scorecard-request email — the reminder_scheduler
+        # sends exactly ONE email per interviewer, 12h after `completed_at`.
     return clean(updated_iv)
 
 
