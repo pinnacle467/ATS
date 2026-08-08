@@ -67,14 +67,14 @@ The following MUST be done, in order, at the very start of every new chat import
 ## Env (in /app/backend/.env)
 - `MONGO_URL`, `DB_NAME=sprout_ats`, `JWT_SECRET`, `EMERGENT_LLM_KEY`, `APP_BASE_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `CORS_ORIGINS`
 
-## Current live data (July 2026, after import from `ats-repo-sync.preview.emergentagent.com`)
-- 3 users (admin@ats.com/Admin@123, kangabhijeet@gmail.com, abhi.kang@context66.com/Imported@123)
-- 6 jobs (1 with a 7,059-char JD — Sales Director US)
-- 136 candidates, of which:
-  - 12 have resume files attached
-  - 35 have AI fit scores (top: Raghavender Katakam 91, Hariharan Rajendran 87, Ashish Bhadauria 82, Astrid Martin 80)
-- 14 interviews, 126 notes, 73 activities, 184 audit-log entries, 2 scorecards
-- 12 resume files (auto-compressed, base64 in `files` collection)
+## Current live data (Aug 2026, after merging live production site `http://129.121.126.61`)
+- 3 users (admin@ats.com/Admin@123 super_admin, kangabhijeet@gmail.com super_admin, abhi.kang@context66.com admin)
+- 9 jobs, 375 candidates (up to CAND-0082), 80 interviews, 261 resume files
+- 151 notes, 1131 activities, 820 audit-log entries, 11 scorecards, 16 analytics events, 4 career pages
+- `counters` collection now correctly seeded with `candidate_seq`(82) / `job_seq`(2) — fixes a latent bug where local builds lacked these keys and would have regenerated colliding CAND-0001/JOB-001 codes on next create.
+
+## Changelog (Aug 2026 session)
+- **Live production data sync**: SSH'd into the user's live self-hosted deployment (`root@129.121.126.61`, native MongoDB `sprout_ats` db), ran `mongodump`, transferred the dump (53MB, 22 collections) into this build, and merged it into the local `sprout_ats` DB. Policy: upsert every live document by its business key (`id`/`key`/`_id` for `counters`) — live version overwrites on conflict, local-only records (from an older snapshot) are preserved untouched. Verified via `/api/auth/login` + `/api/candidates` (newest live candidate CAND-0082 present) and a UI login smoke test (redirect to `/` succeeded). One-off merge script left at `/app/backend/live_sync/merge.py` for reference; dump files cleaned up (local + remote) after the merge.
 
 ## Changelog (July 2026 session)
 - **AI Parsing turned ON**: `EMERGENT_LLM_KEY` (universal) wired; verified via `parse_resume_text` smoke test.
