@@ -26,7 +26,7 @@ async def _score_text(resume_text: str, jd_text: str, session_label: str) -> dic
     return {'score': score, 'summary': summary}
 
 
-async def _resume_text_for(cand: dict) -> str:
+async def resume_text_for(cand: dict) -> str:
     fid = cand.get('resume_file_id')
     if fid:
         f = await db.files.find_one({'id': fid})
@@ -61,7 +61,7 @@ async def recompute_candidate_fit(candidate_id: str):
             'fit_score': None, 'fit_score_summary': None, 'fit_score_computed_at': None,
         }})
         return
-    resume_text = await _resume_text_for(cand)
+    resume_text = await resume_text_for(cand)
     try:
         result = await _score_text(resume_text, jd_source, candidate_id[:8])
     except Exception:

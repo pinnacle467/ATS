@@ -4,11 +4,12 @@ import json
 import re
 
 from grok_client import grok_json
+from industry_taxonomy import INDUSTRY_PROMPT_RULES, normalize_industry_list
 
-PARSE_SYSTEM_PROMPT = """You are an expert resume parser. You receive raw text extracted from a resume (PDF/DOCX) and return ONLY a valid JSON object — no markdown fences, no commentary.
+PARSE_SYSTEM_PROMPT = f"""You are an expert resume parser. You receive raw text extracted from a resume (PDF/DOCX) and return ONLY a valid JSON object — no markdown fences, no commentary.
 
 JSON schema:
-{
+{{
   "name": string|null,
   "email": string|null,
   "phone": string|null,
@@ -16,11 +17,12 @@ JSON schema:
   "current_company": string|null,
   "location": string|null,
   "notice_period": string|null,
-  "experience": [{"company": string, "title": string, "start_date": string|null, "end_date": string|null, "description": string|null}],
-  "education": [{"school": string, "degree": string|null, "start_date": string|null, "end_date": string|null}],
+  "experience": [{{"company": string, "title": string, "start_date": string|null, "end_date": string|null, "description": string|null}}],
+  "education": [{{"school": string, "degree": string|null, "start_date": string|null, "end_date": string|null}}],
   "skills": [string],
-  "confidence": {"name": number, "email": number, "phone": number, "current_title": number, "current_company": number, "location": number}
-}
+  "industry": [string],
+  "confidence": {{"name": number, "email": number, "phone": number, "current_title": number, "current_company": number, "location": number}}
+}}
 
 Rules:
 - If a field cannot be confidently determined, set it to null (or [] for arrays). NEVER guess or fabricate.
@@ -28,6 +30,7 @@ Rules:
 - notice_period: only fill if the resume explicitly states an availability/notice period (e.g. "Notice period: 30 days", "Available immediately"). Otherwise null — do not guess.
 - Dates as human-readable strings, e.g. "Mar 2021", "2019", "Present".
 - Skills: individual skill strings, deduplicated.
+- {INDUSTRY_PROMPT_RULES}
 - Output raw JSON only."""
 
 
@@ -67,7 +70,7 @@ def _strip_fences(raw: str) -> str:
 EMPTY_PARSE = {
     'name': None, 'email': None, 'phone': None, 'current_title': None,
     'current_company': None, 'location': None, 'notice_period': None, 'experience': [], 'education': [],
-    'skills': [], 'confidence': {},
+    'skills': [], 'industry': [], 'confidence': {},
 }
 
 
@@ -82,6 +85,7 @@ async def parse_resume_text(text: str, session_label: str) -> dict:
     except json.JSONDecodeError:
         return {**EMPTY_PARSE}
     merged = {**EMPTY_PARSE, **{k: v for k, v in parsed.items() if k in EMPTY_PARSE}}
+    merged['industry'] = normalize_industry_list(merged.get('industry'))
     return merged
 
 

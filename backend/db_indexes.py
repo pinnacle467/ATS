@@ -91,6 +91,19 @@ async def ensure_indexes(db) -> dict:
         'ensure_indexes: created=%d existed=%d errors=%d',
         len(report['created']), len(report['existed']), len(report['errors']),
     )
+
+    # Non-unique index on candidates.industry (multikey — array field) so the
+    # Industry filter/search stays fast as the candidate table grows.
+    try:
+        await db.candidates.create_index('industry', name='industry_lookup')
+        report['created'].append('candidates.industry')
+    except Exception as e:  # noqa: BLE001
+        msg = str(e)
+        if 'already exists' in msg.lower() or 'IndexOptionsConflict' in msg:
+            report['existed'].append('candidates.industry')
+        else:
+            report['errors'].append({'collection': 'candidates', 'field': 'industry', 'error': msg})
+
     return report
 
 

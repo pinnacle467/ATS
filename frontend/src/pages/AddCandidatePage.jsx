@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { IndustryTagEditor } from '@/components/IndustryPicker';
 import { api, errMsg } from '@/lib/api';
 
 const SOURCES = [
@@ -23,7 +24,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const emptyDraft = () => ({
   name: '', email: '', phone: '', current_title: '', current_company: '', location: '',
-  experience: [], education: [], skills: [], job_id: '', source: 'career_site', tags: [],
+  experience: [], education: [], skills: [], industry: [], job_id: '', source: 'career_site', tags: [],
   resume_file_id: null, low_confidence_fields: [], notice_period: '', notes: '',
 });
 
@@ -40,6 +41,7 @@ function parsedToDraft(result) {
     experience: p.experience || [],
     education: p.education || [],
     skills: p.skills || [],
+    industry: p.industry || [],
     notice_period: p.notice_period || '',
     resume_file_id: result.file_id,
     low_confidence_fields: result.low_confidence_fields || [],
@@ -181,6 +183,15 @@ function DraftForm({ draft, onChange, jobs, tags, onSave, onDiscard, saving, ind
             onChange={(e) => onChange({ ...draft, skills: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })}
             placeholder="Python, React, SQL"
             data-testid={`parsed-review-skills-${index}`}
+          />
+        </div>
+
+        <div className="space-y-1">
+          <Label className="text-xs">Industries</Label>
+          <IndustryTagEditor
+            value={draft.industry || []}
+            onChange={(v) => onChange({ ...draft, industry: v })}
+            testId={`parsed-review-industry-${index}`}
           />
         </div>
 

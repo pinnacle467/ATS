@@ -9,7 +9,8 @@ from pydantic import BaseModel
 
 from auth import get_current_user, interviewer_candidate_ids, require_roles
 from database import db
-from fit_scorer import recompute_candidate_fit
+from fit_scorer import recompute_candidate_fit, resume_text_for
+from industry_taxonomy import INDUSTRY_TAXONOMY, normalize_industry_list
 from permissions import (
     is_admin_or_higher,
     is_interview_panel,
@@ -34,6 +35,7 @@ class CandidateCreate(BaseModel):
     experience: list = []
     education: list = []
     skills: list[str] = []
+    industry: list[str] = []
     job_id: Optional[str] = None
     stage: Optional[str] = None
     source: str = 'career_site'
@@ -56,6 +58,7 @@ class CandidateUpdate(BaseModel):
     experience: Optional[list] = None
     education: Optional[list] = None
     skills: Optional[list[str]] = None
+    industry: Optional[list[str]] = None
     job_id: Optional[str] = None
     source: Optional[str] = None
     recruiter_id: Optional[str] = None
@@ -122,16 +125,27 @@ def _apply_candidate_visibility(cand: Optional[dict], user: dict) -> Optional[di
     return cand
 
 
-def _build_filters(q, job_id, stage, source, recruiter_id, tag, status):
+def _build_filters(q, job_id, stage, source, recruiter_id, tag, status, industries=None):
     query = {}
     if q:
-        query['$or'] = [
-            {'name': {'$regex': q, '$options': 'i'}},
-            {'email': {'$regex': q, '$options': 'i'}},
-            {'current_title': {'$regex': q, '$options': 'i'}},
-            {'current_company': {'$regex': q, '$options': 'i'}},
-            {'skills': {'$regex': q, '$options': 'i'}},
-        ]
+        # Tokenize on whitespace and AND the tokens together (each token OR'd
+        # across the searchable fields, including industry). This lets a query
+        # like "Python FinTech" find candidates matching BOTH terms — possibly
+        # in different fields — rather than requiring the literal phrase to
+        # appear verbatim in a single field.
+        tokens = [t for t in q.split() if t]
+        if tokens:
+            query['$and'] = [
+                {'$or': [
+                    {'name': {'$regex': t, '$options': 'i'}},
+                    {'email': {'$regex': t, '$options': 'i'}},
+                    {'current_title': {'$regex': t, '$options': 'i'}},
+                    {'current_company': {'$regex': t, '$options': 'i'}},
+                    {'skills': {'$regex': t, '$options': 'i'}},
+                    {'industry': {'$regex': t, '$options': 'i'}},
+                ]}
+                for t in tokens
+            ]
     if job_id:
         query['job_id'] = job_id
     if stage:
@@ -144,6 +158,10 @@ def _build_filters(q, job_id, stage, source, recruiter_id, tag, status):
         query['tags'] = tag
     if status:
         query['status'] = status
+    if industries:
+        # Dedicated Industry filter — OR semantics across the selected values
+        # (matches spec: "return candidates matching ANY selected industry").
+        query['industry'] = {'$in': industries}
     return query
 
 
@@ -156,13 +174,14 @@ async def list_candidates(
     recruiter_id: Optional[str] = None,
     tag: Optional[str] = None,
     status: Optional[str] = None,
+    industry: Optional[List[str]] = Query(None),
     sort: str = 'created_at',
     order: int = -1,
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=500),
     user: dict = Depends(get_current_user),
 ):
-    query = _build_filters(q, job_id, stage, source, recruiter_id, tag, status)
+    query = _build_filters(q, job_id, stage, source, recruiter_id, tag, status, industry)
     vis = await _visible_query(user)
     query.update(vis)
     total = await db.candidates.count_documents(query)
@@ -179,6 +198,22 @@ async def list_candidates(
     return {'items': items, 'total': total, 'page': page, 'limit': limit}
 
 
+@router.get('/meta/industries')
+async def list_industries(user: dict = Depends(get_current_user)):
+    """Canonical industry taxonomy for the Industry picker/filter dropdown.
+    Also includes any custom (non-taxonomy) values recruiters have already
+    added to candidates, so the picker's suggestions stay in sync with real
+    usage instead of only ever offering the fixed seed list."""
+    custom = await db.candidates.distinct('industry')
+    merged = list(INDUSTRY_TAXONOMY)
+    seen = {v.lower() for v in merged}
+    for v in sorted(v for v in (custom or []) if isinstance(v, str) and v):
+        if v.lower() not in seen:
+            merged.append(v)
+            seen.add(v.lower())
+    return {'industries': merged}
+
+
 @router.get('/export/csv')
 async def export_csv(
     q: Optional[str] = None,
@@ -188,21 +223,22 @@ async def export_csv(
     recruiter_id: Optional[str] = None,
     tag: Optional[str] = None,
     status: Optional[str] = None,
+    industry: Optional[List[str]] = Query(None),
     user: dict = Depends(require_roles('admin', 'recruiter')),
 ):
-    query = _build_filters(q, job_id, stage, source, recruiter_id, tag, status)
+    query = _build_filters(q, job_id, stage, source, recruiter_id, tag, status, industry)
     items = await db.candidates.find(query, {'_id': 0}).sort('created_at', -1).to_list(5000)
     jobs = {j['id']: j.get('title') for j in await db.jobs.find({}, {'_id': 0, 'id': 1, 'title': 1}).to_list(500)}
     users = {u['id']: u.get('name') for u in await db.users.find({}, {'_id': 0, 'id': 1, 'name': 1}).to_list(500)}
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(['Candidate ID', 'Name', 'Email', 'Phone', 'Title', 'Company', 'Location', 'Job', 'Stage', 'Status', 'Source', 'Recruiter', 'Tags', 'Skills', 'Applied At'])
+    w.writerow(['Candidate ID', 'Name', 'Email', 'Phone', 'Title', 'Company', 'Location', 'Job', 'Stage', 'Status', 'Source', 'Recruiter', 'Tags', 'Skills', 'Industry', 'Applied At'])
     for c in items:
         w.writerow([
             c.get('candidate_code'), c.get('name'), c.get('email'), c.get('phone'), c.get('current_title'), c.get('current_company'),
             c.get('location'), jobs.get(c.get('job_id'), ''), c.get('stage'), c.get('status'), c.get('source'),
             users.get(c.get('recruiter_id'), ''), '; '.join(c.get('tags') or []), '; '.join(c.get('skills') or []),
-            c.get('applied_at', ''),
+            '; '.join(c.get('industry') or []), c.get('applied_at', ''),
         ])
     buf.seek(0)
     await log_audit(user, 'candidates_exported', 'candidate', 'bulk', f'{len(items)} rows')
@@ -270,6 +306,8 @@ async def create_candidate(body: CandidateCreate, background_tasks: BackgroundTa
         'experience': body.experience,
         'education': body.education,
         'skills': body.skills,
+        'industry': normalize_industry_list(body.industry),
+        'industry_source': 'auto' if body.industry else None,
         'job_id': body.job_id,
         'stage': stage or 'Applied',
         'source': 'vendor' if is_vendor(user) else body.source,
@@ -312,6 +350,9 @@ async def update_candidate(candidate_id: str, body: CandidateUpdate, background_
     # won't silently clobber them on the next pass. Any explicit write via PUT
     # here is treated as recruiter-verified truth.
     now_ts = now_iso()
+    if 'industry' in updates:
+        updates['industry'] = normalize_industry_list(updates['industry'])
+        updates['industry_source'] = 'manual'
     if 'notice_period' in updates and updates['notice_period'] != c.get('notice_period'):
         existing_meta = c.get('notice_period_meta') or {}
         updates['notice_period_meta'] = {
@@ -552,6 +593,12 @@ async def merge_resume(candidate_id: str, body: MergeResume, background_tasks: B
         val = p.get(f)
         if val:
             updates[f] = val
+    # Industry: only auto-apply the freshly-parsed value if the recruiter
+    # hasn't manually corrected this candidate's industry before — manual
+    # corrections must never be silently overwritten by a later parse.
+    if p.get('industry') and cand.get('industry_source') != 'manual':
+        updates['industry'] = normalize_industry_list(p['industry'])
+        updates['industry_source'] = 'auto'
     await db.candidates.update_one({'id': candidate_id}, {'$set': updates})
     await log_activity(user, 'resume_merged', f"Matched and merged an uploaded resume into {cand['name']}'s profile", candidate_id=candidate_id)
     await log_audit(user, 'merge_resume', 'candidate', candidate_id, cand['name'])
@@ -928,3 +975,109 @@ async def bulk_scan_undo(user: dict = Depends(require_roles('admin', 'recruiter'
         'failed': failed[:20],
         'failed_count': len(failed),
     }
+
+
+
+# ---------------------------------------------------------------------------
+# Industry backfill — one-off migration so candidates imported/created before
+# this feature existed get their Industry field populated from their resume.
+# Mirrors the bulk-scan-replies pattern above: a global in-memory task +
+# polling status endpoint (single uvicorn worker, so this is safe).
+# ---------------------------------------------------------------------------
+
+_industry_backfill_task: dict = {
+    'task_id': None,
+    'status': 'idle',   # 'idle' | 'running' | 'done' | 'error'
+    'started_at': None,
+    'finished_at': None,
+    'total': 0,
+    'processed': 0,
+    'updated': 0,
+    'skipped_manual': 0,
+    'skipped_no_evidence': 0,
+    'errors': [],
+    'triggered_by': None,
+    'force': False,
+}
+
+
+async def _run_industry_backfill(force: bool):
+    from industry_classifier import classify_industries_from_resume
+    global _industry_backfill_task
+    try:
+        # Scope: never touch candidates whose industry was manually corrected.
+        # Without force, only fill candidates with an empty industry list;
+        # with force, recompute every non-manual candidate (still skips manual).
+        query: dict = {'industry_source': {'$ne': 'manual'}}
+        if not force:
+            query['$or'] = [{'industry': {'$exists': False}}, {'industry': []}]
+        cand_list = await db.candidates.find(query, {'_id': 0}).to_list(10000)
+        _industry_backfill_task['total'] = len(cand_list)
+        logger.info('industry backfill starting: total=%d force=%s', len(cand_list), force)
+
+        for cand in cand_list:
+            try:
+                text = await resume_text_for(cand)
+                industries = await classify_industries_from_resume(text)
+                if industries:
+                    await db.candidates.update_one(
+                        {'id': cand['id']},
+                        {'$set': {'industry': industries, 'industry_source': 'auto', 'updated_at': now_iso()}},
+                    )
+                    _industry_backfill_task['updated'] += 1
+                else:
+                    _industry_backfill_task['skipped_no_evidence'] += 1
+            except Exception as exc:
+                logger.exception('industry backfill failed for candidate %s', cand.get('id'))
+                _industry_backfill_task['errors'].append({
+                    'candidate_id': cand.get('id'), 'candidate_name': cand.get('name'), 'message': str(exc)[:200],
+                })
+                _industry_backfill_task['errors'] = _industry_backfill_task['errors'][-20:]
+            finally:
+                _industry_backfill_task['processed'] += 1
+
+        _industry_backfill_task['status'] = 'done'
+        _industry_backfill_task['finished_at'] = _now_iso_local()
+        logger.info('industry backfill finished: processed=%d updated=%d errors=%d',
+                    _industry_backfill_task['processed'], _industry_backfill_task['updated'],
+                    len(_industry_backfill_task['errors']))
+    except Exception:
+        logger.exception('industry backfill driver crashed')
+        _industry_backfill_task['status'] = 'error'
+        _industry_backfill_task['finished_at'] = _now_iso_local()
+
+
+@router.post('/backfill-industry')
+async def backfill_industry(force: bool = False, user: dict = Depends(require_roles('admin'))):
+    """Kick off the industry backfill across existing candidates. Returns the
+    task_id immediately; poll /candidates/backfill-industry/status for progress.
+    `force=true` recomputes industry for every candidate that hasn't been
+    manually corrected (not just the ones with an empty industry list)."""
+    import asyncio as _asyncio
+
+    global _industry_backfill_task
+    if _industry_backfill_task.get('status') == 'running':
+        return {'ok': True, 'already_running': True, **_industry_backfill_task}
+
+    _industry_backfill_task.clear()
+    _industry_backfill_task.update({
+        'task_id': new_id(),
+        'status': 'running',
+        'started_at': _now_iso_local(),
+        'finished_at': None,
+        'total': 0,
+        'processed': 0,
+        'updated': 0,
+        'skipped_manual': 0,
+        'skipped_no_evidence': 0,
+        'errors': [],
+        'triggered_by': user['id'],
+        'force': bool(force),
+    })
+    _asyncio.create_task(_run_industry_backfill(bool(force)))
+    return {'ok': True, 'already_running': False, **_industry_backfill_task}
+
+
+@router.get('/backfill-industry/status')
+async def backfill_industry_status(user: dict = Depends(require_roles('admin'))):
+    return _industry_backfill_task

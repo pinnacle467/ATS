@@ -481,6 +481,80 @@ function AuditTab() {
   );
 }
 
+function IndustryBackfillTab() {
+  const [task, setTask] = useState(null);
+  const [force, setForce] = useState(false);
+
+  const poll = useCallback(async () => {
+    try {
+      const r = await api.get('/candidates/backfill-industry/status');
+      setTask(r.data);
+      return r.data;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  useEffect(() => { poll(); }, [poll]);
+
+  useEffect(() => {
+    if (task?.status !== 'running') return undefined;
+    const t = setInterval(async () => {
+      const s = await poll();
+      if (!s || s.status !== 'running') {
+        clearInterval(t);
+        if (s?.status === 'done') {
+          toast.success(`Backfill complete — updated ${s.updated} of ${s.processed} candidates`);
+        } else if (s?.status === 'error') {
+          toast.error('Industry backfill failed — check server logs');
+        }
+      }
+    }, 2000);
+    return () => clearInterval(t);
+  }, [task?.status, poll]);
+
+  const start = async () => {
+    try {
+      const r = await api.post('/candidates/backfill-industry', null, { params: { force } });
+      setTask(r.data);
+      if (r.data?.already_running) toast.message('A backfill is already running');
+      else toast.info(force ? 'Backfill started — recomputing industry for all non-manual candidates' : 'Backfill started — filling in candidates with no industry yet');
+    } catch (e) {
+      toast.error(errMsg(e, 'Could not start backfill'));
+    }
+  };
+
+  const running = task?.status === 'running';
+
+  return (
+    <div className="space-y-4 max-w-2xl">
+      <Card className="shadow-none">
+        <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Backfill Candidate Industries</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Uses AI to classify each candidate&apos;s industry (FinTech, Healthcare, SaaS, etc.) from their resume/work history.
+            Candidates whose industry was manually corrected are never overwritten.
+          </p>
+          <label className="flex items-start gap-2 text-xs cursor-pointer">
+            <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} className="mt-0.5" data-testid="backfill-force-checkbox" />
+            <span>Recompute for ALL candidates without a manual correction (not just ones with no industry yet)</span>
+          </label>
+          <Button onClick={start} disabled={running} data-testid="backfill-industry-start-button">
+            {running ? `Running ${task?.processed || 0}/${task?.total || '…'}...` : 'Run Backfill'}
+          </Button>
+          {task && task.status !== 'idle' && (
+            <div className="text-xs text-muted-foreground space-y-0.5 pt-2 border-t border-border" data-testid="backfill-industry-status">
+              <p>Status: <span className="font-medium text-foreground">{task.status}</span></p>
+              <p>Processed: {task.processed || 0} / {task.total || 0}</p>
+              <p>Updated: {task.updated || 0} · No evidence found: {task.skipped_no_evidence || 0} · Errors: {(task.errors || []).length}</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 export default function AdminPage() {
   return (
     <div className="space-y-4">
@@ -495,12 +569,14 @@ export default function AdminPage() {
           <TabsTrigger value="org" data-testid="admin-tab-org">Departments & Tags</TabsTrigger>
           <TabsTrigger value="kits" data-testid="admin-tab-kits">Interview Kits</TabsTrigger>
           <TabsTrigger value="audit" data-testid="admin-tab-audit">Audit Log</TabsTrigger>
+          <TabsTrigger value="data" data-testid="admin-tab-data">Data Tools</TabsTrigger>
         </TabsList>
         <TabsContent value="users" className="mt-4"><UsersTab /></TabsContent>
         <TabsContent value="pipeline" className="mt-4"><PipelineTab /></TabsContent>
         <TabsContent value="org" className="mt-4"><DepartmentsTagsTab /></TabsContent>
         <TabsContent value="kits" className="mt-4"><KitsTab /></TabsContent>
         <TabsContent value="audit" className="mt-4"><AuditTab /></TabsContent>
+        <TabsContent value="data" className="mt-4"><IndustryBackfillTab /></TabsContent>
       </Tabs>
     </div>
   );

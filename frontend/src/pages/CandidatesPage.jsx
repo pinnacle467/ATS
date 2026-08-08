@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Textarea } from '@/components/ui/textarea';
 import KanbanBoard from '@/components/KanbanBoard';
 import SendEmailDialog from '@/components/SendEmailDialog';
+import { IndustryChips, IndustryFilterMenu } from '@/components/IndustryPicker';
 import { useAuth } from '@/context/AuthContext';
 import { api, errMsg } from '@/lib/api';
 
@@ -100,6 +101,7 @@ export default function CandidatesPage() {
     tag: 'all',
   });
   const [page, setPage] = useState(1);
+  const [industryFilter, setIndustryFilter] = useState([]);
   const [selected, setSelected] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState('created_at'); // 'created_at' | 'fit_score' | 'name'
@@ -278,6 +280,7 @@ export default function CandidatesPage() {
     const order = sortBy === 'name' ? 1 : -1;
     const params = { page, limit, sort: sortBy, order };
     if (q) params.q = q;
+    if (industryFilter.length > 0) params.industry = industryFilter;
     Object.entries(filters).forEach(([k, v]) => {
       if (v !== 'all') params[k] = v;
     });
@@ -286,7 +289,7 @@ export default function CandidatesPage() {
       .then((r) => setData(r.data))
       .catch((e) => toast.error(errMsg(e)))
       .finally(() => setLoading(false));
-  }, [q, filters, page, limit, sortBy]);
+  }, [q, filters, page, limit, sortBy, industryFilter]);
 
   useEffect(() => {
     const t = setTimeout(load, q ? 300 : 0);
@@ -475,7 +478,7 @@ export default function CandidatesPage() {
               setQ(e.target.value);
               setPage(1);
             }}
-            placeholder="Search name, email, title, skills..."
+            placeholder="Search name, email, title, skills, industry..."
             className="pl-9 h-9"
           />
         </div>
@@ -514,6 +517,7 @@ export default function CandidatesPage() {
             {tags.map((t) => <SelectItem key={t.id} value={t.name}>{t.name}</SelectItem>)}
           </SelectContent>
         </Select>
+        <IndustryFilterMenu value={industryFilter} onChange={(v) => { setIndustryFilter(v); setPage(1); }} />
         <Select value={sortBy} onValueChange={(v) => { setSortBy(v); setPage(1); }}>
           <SelectTrigger className="w-[150px] h-9" data-testid="candidates-sort-select"><SelectValue placeholder="Sort" /></SelectTrigger>
           <SelectContent>
@@ -522,8 +526,8 @@ export default function CandidatesPage() {
             <SelectItem value="name">Name (A-Z)</SelectItem>
           </SelectContent>
         </Select>
-        {activeFilterChips.length > 0 && (
-          <Button variant="ghost" size="sm" className="h-9" onClick={() => { setFilters({ job_id: 'all', stage: 'all', source: 'all', recruiter_id: 'all', tag: 'all' }); setQ(''); setPage(1); }}>
+        {(activeFilterChips.length > 0 || industryFilter.length > 0) && (
+          <Button variant="ghost" size="sm" className="h-9" onClick={() => { setFilters({ job_id: 'all', stage: 'all', source: 'all', recruiter_id: 'all', tag: 'all' }); setIndustryFilter([]); setQ(''); setPage(1); }}>
             <X className="h-4 w-4 mr-1" /> Clear
           </Button>
         )}
@@ -588,16 +592,17 @@ export default function CandidatesPage() {
                 <TableHead className="hidden md:table-cell">Source</TableHead>
                 <TableHead className="hidden md:table-cell">Recruiter</TableHead>
                 <TableHead className="hidden lg:table-cell">Notice Period</TableHead>
+                <TableHead className="hidden lg:table-cell">Industry</TableHead>
                 <TableHead className="hidden lg:table-cell">Tags</TableHead>
                 <TableHead className="hidden lg:table-cell">Applied</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && (
-                <TableRow><TableCell colSpan={11} className="text-center py-10 text-muted-foreground">Loading candidates...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={12} className="text-center py-10 text-muted-foreground">Loading candidates...</TableCell></TableRow>
               )}
               {!loading && data.items.length === 0 && (
-                <TableRow><TableCell colSpan={11} className="text-center py-10 text-muted-foreground">No candidates found. Try adjusting filters.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={12} className="text-center py-10 text-muted-foreground">No candidates found. Try adjusting filters.</TableCell></TableRow>
               )}
               {!loading && data.items.map((c) => (
                 <TableRow key={c.id} className="cursor-pointer" data-testid={`candidate-row-${c.id}`} onClick={() => navigate(`/candidates/${c.id}`)}>
@@ -630,6 +635,9 @@ export default function CandidatesPage() {
                   <TableCell className="hidden md:table-cell text-sm capitalize">{(c.source || '').replace('_', ' ')}</TableCell>
                   <TableCell className="hidden md:table-cell text-sm">{c.recruiter_name || '—'}</TableCell>
                   <TableCell className="hidden lg:table-cell text-sm">{c.notice_period || '—'}</TableCell>
+                  <TableCell className="hidden lg:table-cell" data-testid={`candidate-industry-cell-${c.id}`} onClick={(e) => e.stopPropagation()}>
+                    <IndustryChips industries={c.industry || []} max={2} testId={`candidate-industry-${c.id}`} />
+                  </TableCell>
                   <TableCell className="hidden lg:table-cell">
                     <div className="flex flex-wrap gap-1">
                       {(c.tags || []).slice(0, 2).map((t) => <Badge key={t} variant="secondary" className="text-[10px]">{t}</Badge>)}

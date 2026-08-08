@@ -9,6 +9,7 @@ import {
   Clock,
   Download,
   ExternalLink,
+  Factory,
   FileText,
   GraduationCap,
   Mail,
@@ -41,6 +42,7 @@ import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
 import { StageBadge, REJECTION_REASONS, SOURCES } from '@/pages/CandidatesPage';
 import ChangeLog from '@/components/ChangeLog';
+import { IndustryChips, IndustryTagEditor } from '@/components/IndustryPicker';
 import RoundFeedbackSection from '@/components/RoundFeedbackSection';
 import SendEmailDialog from '@/components/SendEmailDialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -405,6 +407,7 @@ export default function CandidateProfilePage() {
       notice_period: cand.notice_period || '',
       expected_compensation: cand.expected_compensation || '',
       tags: (cand.tags || []).join(', '),
+      industry: cand.industry || [],
     });
     setEditingDetails(true);
   };
@@ -459,6 +462,7 @@ export default function CandidateProfilePage() {
         current_company: editForm.current_company?.trim() || null,
         notice_period: editForm.notice_period?.trim() || null,
         tags: (editForm.tags || '').split(',').map((t) => t.trim()).filter(Boolean),
+        industry: editForm.industry || [],
       };
       if (isAdminPlus) {
         payload.expected_compensation = editForm.expected_compensation?.trim() || null;
@@ -790,6 +794,10 @@ export default function CandidateProfilePage() {
                     <Label className="text-xs text-muted-foreground flex items-center gap-1.5"><Tag className="h-3.5 w-3.5" /> Tags (comma-separated)</Label>
                     <Input value={editForm.tags} onChange={(e) => setEditForm((f) => ({ ...f, tags: e.target.value }))} placeholder="e.g. senior, remote, referral" data-testid="edit-tags" />
                   </div>
+                  <div className="space-y-1 sm:col-span-2">
+                    <Label className="text-xs text-muted-foreground flex items-center gap-1.5"><Factory className="h-3.5 w-3.5" /> Industries</Label>
+                    <IndustryTagEditor value={editForm.industry || []} onChange={(v) => setEditForm((f) => ({ ...f, industry: v }))} testId="edit-industry" />
+                  </div>
                 </>
               ) : (
                 <>
@@ -828,6 +836,16 @@ export default function CandidateProfilePage() {
                     <Tag className="h-4 w-4 text-muted-foreground" />
                     {(cand.tags || []).length === 0 && <span className="text-muted-foreground">No tags</span>}
                     {(cand.tags || []).map((t) => <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>)}
+                  </div>
+                  <div className="sm:col-span-2">
+                    <Separator className="my-2" />
+                    <div className="flex items-start gap-2" data-testid="candidate-industries">
+                      <Factory className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-muted-foreground mb-1">Industries</p>
+                        <IndustryChips industries={cand.industry || []} testId="candidate-industry-chips" />
+                      </div>
+                    </div>
                   </div>
                   {(cand.skills || []).length > 0 && (
                     <div className="sm:col-span-2">
