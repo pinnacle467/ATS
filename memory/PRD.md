@@ -74,6 +74,7 @@ The following MUST be done, in order, at the very start of every new chat import
 - `counters` collection now correctly seeded with `candidate_seq`(82) / `job_seq`(2) — fixes a latent bug where local builds lacked these keys and would have regenerated colliding CAND-0001/JOB-001 codes on next create.
 
 ## Changelog (Aug 2026 session)
+- **Grok AI activated**: `XAI_API_KEY` added to `/app/backend/.env` (rotated key). Verified end-to-end: `resume_parser.parse_resume_text()` correctly extracts structured fields from a sample resume, and `fit_scorer._score_text()` returns a real 0-100 score + summary. Resume parsing, bulk import, and fit-score recompute are now live (previously blocked on missing key).
 - **Live production data sync**: SSH'd into the user's live self-hosted deployment (`root@129.121.126.61`, native MongoDB `sprout_ats` db), ran `mongodump`, transferred the dump (53MB, 22 collections) into this build, and merged it into the local `sprout_ats` DB. Policy: upsert every live document by its business key (`id`/`key`/`_id` for `counters`) — live version overwrites on conflict, local-only records (from an older snapshot) are preserved untouched. Verified via `/api/auth/login` + `/api/candidates` (newest live candidate CAND-0082 present) and a UI login smoke test (redirect to `/` succeeded). One-off merge script left at `/app/backend/live_sync/merge.py` for reference; dump files cleaned up (local + remote) after the merge.
 
 ## Changelog (July 2026 session)
