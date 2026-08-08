@@ -3,7 +3,14 @@ import axios from 'axios';
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 export const API = `${BACKEND_URL}/api`;
 
-export const api = axios.create({ baseURL: API });
+export const api = axios.create({
+  baseURL: API,
+  // FastAPI's `Query(None)` for List[str] params expects repeated keys
+  // (industry=A&industry=B), but axios's default array serialization uses
+  // bracket notation (industry[]=A&industry[]=B), which FastAPI silently
+  // ignores. `indexes: null` makes axios use the repeated-key format instead.
+  paramsSerializer: { indexes: null },
+});
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('ats_token');
