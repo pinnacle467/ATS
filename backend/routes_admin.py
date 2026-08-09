@@ -1,3 +1,4 @@
+import os
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -5,10 +6,16 @@ from pydantic import BaseModel, EmailStr
 
 from auth import get_current_user, hash_password, require_roles
 from database import db
+from demo_seed import seed_demo
 from permissions import ALL_ROLES, ROLE_ADMIN, ROLE_SUPER_ADMIN, can_manage_role, is_super_admin
 from utils import clean, log_audit, new_id, now_iso
 
 router = APIRouter(tags=['admin'])
+
+# Only ever 'true' on the isolated demo backend's own .env — gates the
+# destructive reseed endpoint below so it can never accidentally run
+# against a real production database, even if this code ships everywhere.
+DEMO_MODE = os.environ.get('DEMO_MODE', '').lower() == 'true'
 
 
 VALID_ROLES = set(ALL_ROLES) | {'recruiter', 'interviewer'}  # legacy accepted for safety
@@ -187,3 +194,21 @@ async def audit_log(action: Optional[str] = None, limit: int = 100, user: dict =
     if action:
         q['action'] = action
     return clean(await db.audit_log.find(q, {'_id': 0}).sort('created_at', -1).to_list(min(limit, 500)))
+
+
+# ---- Demo instance data reset (isolated demo backend only) ----
+
+@router.get('/admin/demo/status')
+async def demo_status(user: dict = Depends(get_current_user)):
+    """Lets the Admin panel know whether to show the 'Reset Demo Data' button.
+    Always False on production — DEMO_MODE is only set in the demo backend's .env."""
+    return {'is_demo': DEMO_MODE}
+
+
+@router.post('/admin/demo/reseed')
+async def reseed_demo_data(user: dict = Depends(require_roles('admin'))):
+    if not DEMO_MODE:
+        raise HTTPException(status_code=403, detail='Demo reseed is only available on the demo instance')
+    summary = await seed_demo(db)
+    await log_audit(user, 'demo_reseeded', 'database', os.environ.get('DB_NAME', ''), f'Reset demo data: {summary}')
+    return {'ok': True, **summary}

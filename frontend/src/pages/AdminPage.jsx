@@ -493,6 +493,26 @@ function AuditTab() {
 function IndustryBackfillTab() {
   const [task, setTask] = useState(null);
   const [force, setForce] = useState(false);
+  const [isDemo, setIsDemo] = useState(false);
+  const [reseeding, setReseeding] = useState(false);
+  const [confirmReseedOpen, setConfirmReseedOpen] = useState(false);
+
+  useEffect(() => {
+    api.get('/admin/demo/status').then((r) => setIsDemo(!!r.data?.is_demo)).catch(() => {});
+  }, []);
+
+  const runReseed = async () => {
+    setReseeding(true);
+    try {
+      const r = await api.post('/admin/demo/reseed');
+      toast.success(`Demo data reset — ${r.data.users} users, ${r.data.jobs} jobs, ${r.data.candidates} candidates, ${r.data.interviews} interviews`);
+      setConfirmReseedOpen(false);
+    } catch (e) {
+      toast.error(errMsg(e, 'Could not reset demo data'));
+    } finally {
+      setReseeding(false);
+    }
+  };
 
   const poll = useCallback(async () => {
     try {
@@ -537,6 +557,43 @@ function IndustryBackfillTab() {
 
   return (
     <div className="space-y-4 max-w-2xl">
+      {isDemo && (
+        <Card className="shadow-none border-amber-300 bg-amber-50/40" data-testid="demo-reset-card">
+          <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Reset Demo Data</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              This is the isolated demo instance. Wipe everything (users, jobs, candidates, interviews, notes) and re-seed a fresh
+              fictional hiring pipeline — useful before showing the demo to a new prospect. This never touches the real production database.
+            </p>
+            <Button
+              variant="outline"
+              className="border-amber-400 text-amber-800 hover:bg-amber-100"
+              onClick={() => setConfirmReseedOpen(true)}
+              disabled={reseeding}
+              data-testid="demo-reset-button"
+            >
+              {reseeding ? 'Resetting…' : 'Reset Demo Data'}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      <Dialog open={confirmReseedOpen} onOpenChange={setConfirmReseedOpen}>
+        <DialogContent className="sm:max-w-md" data-testid="demo-reset-confirm-dialog">
+          <DialogHeader><DialogTitle>Reset demo data?</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            This permanently deletes every user, job, candidate, interview and note in this demo database and replaces them with a
+            fresh fictional dataset. This cannot be undone.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmReseedOpen(false)} disabled={reseeding}>Cancel</Button>
+            <Button variant="destructive" onClick={runReseed} disabled={reseeding} data-testid="demo-reset-confirm-button">
+              {reseeding ? 'Resetting…' : 'Reset Demo Data'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Card className="shadow-none">
         <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Backfill Candidate Industries</CardTitle></CardHeader>
         <CardContent className="space-y-3">

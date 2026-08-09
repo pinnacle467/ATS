@@ -31,10 +31,13 @@ def iso(dt):
     return dt.isoformat()
 
 
-async def seed_demo(mongo_url: str, db_name: str):
-    client = AsyncIOMotorClient(mongo_url)
-    db = client[db_name]
+async def seed_demo(db):
+    """Wipe every collection in `db` and repopulate it with fictional demo data.
 
+    `db` is an already-connected motor database handle (either the app's own
+    `database.db` when called from the `/admin/demo/reseed` API route, or a
+    fresh client's db when invoked from the CLI below).
+    """
     # Safety: only ever wipe the explicitly-targeted demo database, never touch anything else.
     for coll in await db.list_collection_names():
         await db[coll].delete_many({})
@@ -214,11 +217,20 @@ async def seed_demo(mongo_url: str, db_name: str):
     await db.notifications.create_index('user_id')
     await db.activities.create_index('created_at')
 
-    print(f'Demo data seeded into {db_name}: users={len(users)} jobs={len(jobs)} candidates={len(candidates)} interviews={len(interviews)}')
-    client.close()
+    summary = {'users': len(users), 'jobs': len(jobs), 'candidates': len(candidates), 'interviews': len(interviews)}
+    print(f'Demo data seeded into {db.name}: {summary}')
+    return summary
+
+
+async def _seed_via_new_client(mongo_url: str, db_name: str):
+    client = AsyncIOMotorClient(mongo_url)
+    try:
+        await seed_demo(client[db_name])
+    finally:
+        client.close()
 
 
 if __name__ == '__main__':
-    mongo_url = sys.argv[1] if len(sys.argv) > 1 else 'mongodb://localhost:27017'
-    db_name = sys.argv[2] if len(sys.argv) > 2 else 'sprout_ats_demo'
-    asyncio.run(seed_demo(mongo_url, db_name))
+    _mongo_url = sys.argv[1] if len(sys.argv) > 1 else 'mongodb://localhost:27017'
+    _db_name = sys.argv[2] if len(sys.argv) > 2 else 'sprout_ats_demo'
+    asyncio.run(_seed_via_new_client(_mongo_url, _db_name))
