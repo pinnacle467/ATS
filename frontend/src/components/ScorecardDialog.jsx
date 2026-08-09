@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { api, errMsg } from '@/lib/api';
+import { useCachedPipelineStages } from '@/lib/referenceCache';
 
 const DEFAULT_ATTRS = ['Communication', 'Technical Skill', 'Problem Solving', 'Culture Fit'];
 const RECOMMENDATIONS = [
@@ -44,6 +45,7 @@ export default function ScorecardDialog({ open, onOpenChange, interview, onSubmi
   const [recommendation, setRecommendation] = useState('');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
+  const [pipelineSettings] = useCachedPipelineStages();
 
   useEffect(() => {
     if (!open || !interview) return;
@@ -51,11 +53,9 @@ export default function ScorecardDialog({ open, onOpenChange, interview, onSubmi
     setOverall(0);
     setRecommendation('');
     setNotes('');
-    api.get('/settings/pipeline').then((r) => {
-      const stage = (r.data.stages || []).find((s) => s.name === interview.stage);
-      setAttrs(stage?.scorecard_attributes?.length ? stage.scorecard_attributes : DEFAULT_ATTRS);
-    }).catch(() => setAttrs(DEFAULT_ATTRS));
-  }, [open, interview]);
+    const stage = (pipelineSettings?.stages || []).find((s) => s.name === interview.stage);
+    setAttrs(stage?.scorecard_attributes?.length ? stage.scorecard_attributes : DEFAULT_ATTRS);
+  }, [open, interview, pipelineSettings]);
 
   const submit = async () => {
     if (overall === 0) return toast.error('Please set an overall rating');

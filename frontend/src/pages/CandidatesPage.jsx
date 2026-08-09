@@ -16,6 +16,7 @@ import SendEmailDialog from '@/components/SendEmailDialog';
 import { IndustryChips, IndustryFilterMenu } from '@/components/IndustryPicker';
 import { useAuth } from '@/context/AuthContext';
 import { api, errMsg } from '@/lib/api';
+import { useCachedJobs, useCachedPipelineStages, useCachedTags, useCachedUsers } from '@/lib/referenceCache';
 
 export const SOURCES = [
   { value: 'referral', label: 'Referral' },
@@ -88,10 +89,13 @@ export default function CandidatesPage() {
   const [searchParams] = useSearchParams();
   const [view, setView] = useState(() => localStorage.getItem('ats_view') || 'table');
   const [data, setData] = useState({ items: [], total: 0 });
-  const [jobs, setJobs] = useState([]);
-  const [users, setUsers] = useState([]);
-  const [tags, setTags] = useState([]);
-  const [stages, setStages] = useState(['Applied', 'Screening', 'Interview', 'Offer', 'Hired', 'Rejected']);
+  const [jobs] = useCachedJobs();
+  const [users] = useCachedUsers();
+  const [tags] = useCachedTags();
+  const [pipelineSettings] = useCachedPipelineStages();
+  const stages = pipelineSettings?.stages?.length
+    ? pipelineSettings.stages.map((s) => s.name)
+    : ['Applied', 'Screening', 'Interview', 'Offer', 'Hired', 'Rejected'];
   const [q, setQ] = useState(searchParams.get('q') || '');
   const [filters, setFilters] = useState({
     job_id: searchParams.get('job_id') || 'all',
@@ -263,17 +267,6 @@ export default function CandidatesPage() {
     if (!isAdminPlus) return;
     pollBulkScanStatus();
   }, [isAdminPlus, pollBulkScanStatus]);
-
-  useEffect(() => {
-    Promise.all([api.get('/jobs'), api.get('/users'), api.get('/tags'), api.get('/settings/pipeline')])
-      .then(([j, u, t, p]) => {
-        setJobs(j.data);
-        setUsers(u.data);
-        setTags(t.data);
-        if (p.data?.stages?.length) setStages(p.data.stages.map((s) => s.name));
-      })
-      .catch(() => {});
-  }, []);
 
   const load = useCallback(() => {
     setLoading(true);

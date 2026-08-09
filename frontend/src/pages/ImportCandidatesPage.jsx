@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, Download, FileSpreadsheet, Loader2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { api, errMsg } from '@/lib/api';
+import { useCachedJobs } from '@/lib/referenceCache';
 
 const FIELD_LABELS = {
   skip: '— Skip —',
@@ -38,15 +39,11 @@ export default function ImportCandidatesPage() {
   const [dragOver, setDragOver] = useState(false);
   const [preview, setPreview] = useState(null); // {import_id, headers, suggested_mapping, sample_rows, total_rows, target_fields}
   const [mapping, setMapping] = useState({});
-  const [jobs, setJobs] = useState([]);
+  const [jobs] = useCachedJobs();
   const [defaultJob, setDefaultJob] = useState('none');
   const [defaultSource, setDefaultSource] = useState('career_site');
   const [dupStrategy, setDupStrategy] = useState('skip');
   const [result, setResult] = useState(null);
-
-  useEffect(() => {
-    api.get('/jobs').then((r) => setJobs(r.data)).catch(() => {});
-  }, []);
 
   const downloadTemplate = async () => {
     try {

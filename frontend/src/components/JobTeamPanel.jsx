@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/context/AuthContext';
 import { api, errMsg } from '@/lib/api';
+import { useCachedUsers } from '@/lib/referenceCache';
 import { isAdminOrHigher, ROLE_LABELS } from '@/lib/roles';
 
 const ROLE_ON_JOB_OPTIONS = [
@@ -29,12 +30,14 @@ const ROLE_ON_JOB_LABELS = {
 export default function JobTeamPanel({ jobId }) {
   const { user: me } = useAuth();
   const [members, setMembers] = useState([]);
-  const [candidates, setCandidates] = useState([]); // users eligible to be added
+  const [allUsers] = useCachedUsers();
   const [loading, setLoading] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
   const [form, setForm] = useState({ user_id: '', role_on_job: 'interview_panel', salary_visible: false });
 
   const canManage = isAdminOrHigher(me);
+  // Only interview_panel / vendor role users can be added to a job team
+  const candidates = allUsers.filter((u) => u.active !== false && ['interview_panel', 'vendor', 'interviewer'].includes(u.role));
 
   const load = useCallback(() => {
     if (!jobId || !canManage) {
@@ -42,17 +45,8 @@ export default function JobTeamPanel({ jobId }) {
       return;
     }
     setLoading(true);
-    Promise.all([
-      api.get(`/jobs/${jobId}/team`),
-      api.get('/users'),
-    ])
-      .then(([team, users]) => {
-        setMembers(team.data.members || []);
-        // Only interview_panel / vendor role users can be added to a team
-        setCandidates((users.data || []).filter(
-          (u) => u.active !== false && ['interview_panel', 'vendor', 'interviewer'].includes(u.role)
-        ));
-      })
+    api.get(`/jobs/${jobId}/team`)
+      .then((team) => setMembers(team.data.members || []))
       .catch((e) => toast.error(errMsg(e, 'Failed to load team')))
       .finally(() => setLoading(false));
   }, [jobId, canManage]);

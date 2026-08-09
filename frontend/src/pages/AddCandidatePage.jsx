@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, ArrowLeft, CheckCircle2, FileUp, FolderUp, Loader2, Plus, Save, Trash2, Upload, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { IndustryTagEditor } from '@/components/IndustryPicker';
 import { api, errMsg } from '@/lib/api';
+import { useCachedJobs, useCachedTags } from '@/lib/referenceCache';
 
 const SOURCES = [
   { value: 'referral', label: 'Referral' },
@@ -268,8 +269,8 @@ export default function AddCandidatePage() {
   const fileRef = useRef();
   const bulkRef = useRef();
   const folderRef = useRef();
-  const [jobs, setJobs] = useState([]);
-  const [tags, setTags] = useState([]);
+  const [jobs] = useCachedJobs();
+  const [tags] = useCachedTags();
   const [parsing, setParsing] = useState(false);
   const [bulkProgress, setBulkProgress] = useState(null); // { current, total, phase }
   const [drafts, setDrafts] = useState([]);
@@ -278,13 +279,6 @@ export default function AddCandidatePage() {
   const [dragOver, setDragOver] = useState(false);
   const [bulkJobId, setBulkJobId] = useState('');
   const [savingAll, setSavingAll] = useState(false);
-
-  useEffect(() => {
-    Promise.all([api.get('/jobs'), api.get('/tags')]).then(([j, t]) => {
-      setJobs(j.data);
-      setTags(t.data);
-    }).catch(() => {});
-  }, []);
 
   const parseSingle = async (file) => {
     setParsing(true);

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Briefcase, FileText, MapPin, Pencil, Plus, Trash2, Users } from 'lucide-react';
 import { toast } from 'sonner';
@@ -13,6 +13,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useAuth } from '@/context/AuthContext';
 import { api, errMsg } from '@/lib/api';
+import { refreshJobs, useCachedDepartments, useCachedJobs } from '@/lib/referenceCache';
 
 export function JdIndicator({ hasJd }) {
   return (
@@ -45,23 +46,15 @@ export default function JobsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [jobs, setJobs] = useState([]);
-  const [departments, setDepartments] = useState([]);
+  const [allJobs] = useCachedJobs();
+  const [departments] = useCachedDepartments();
   const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || 'all');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
 
-  const load = useCallback(() => {
-    const params = statusFilter !== 'all' ? { status: statusFilter } : {};
-    api.get('/jobs', { params }).then((r) => setJobs(r.data)).catch((e) => toast.error(errMsg(e)));
-  }, [statusFilter]);
-
-  useEffect(() => {
-    load();
-    api.get('/departments').then((r) => setDepartments(r.data)).catch(() => {});
-  }, [load]);
+  const jobs = statusFilter === 'all' ? allJobs : allJobs.filter((j) => j.status === statusFilter);
 
   const openCreate = () => {
     setEditing(null);
@@ -103,7 +96,7 @@ export default function JobsPage() {
         toast.success('Job created');
       }
       setDialogOpen(false);
-      load();
+      refreshJobs();
     } catch (e) {
       toast.error(errMsg(e));
     } finally {
@@ -115,7 +108,7 @@ export default function JobsPage() {
     try {
       await api.put(`/jobs/${job.id}`, { status });
       toast.success(`Job marked ${status.replace('_', ' ')}`);
-      load();
+      refreshJobs();
     } catch (e) {
       toast.error(errMsg(e));
     }
@@ -129,7 +122,7 @@ export default function JobsPage() {
     try {
       await api.delete(`/jobs/${job.id}`);
       toast.success('Job deleted');
-      load();
+      refreshJobs();
     } catch (e) {
       toast.error(errMsg(e, 'Could not delete job'));
     }

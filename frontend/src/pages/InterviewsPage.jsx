@@ -16,6 +16,7 @@ import ScheduleInterviewDialog from '@/components/ScheduleInterviewDialog';
 import ScorecardDialog from '@/components/ScorecardDialog';
 import { useAuth } from '@/context/AuthContext';
 import { api, errMsg } from '@/lib/api';
+import { useCachedInterviewKits, useCachedJobs, useCachedUsers } from '@/lib/referenceCache';
 import {
   asWallClockDate, formatInTz, getBrowserTz, isSameDayInTz, TZ_PRESETS, tzAbbr, tzHours,
 } from '@/lib/timezones';
@@ -56,9 +57,9 @@ export default function InterviewsPage() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [interviews, setInterviews] = useState([]);
-  const [users, setUsers] = useState([]);
-  const [jobs, setJobs] = useState([]);
-  const [kits, setKits] = useState([]);
+  const [users] = useCachedUsers();
+  const [jobs] = useCachedJobs();
+  const [kits] = useCachedInterviewKits();
   const [filters, setFilters] = useState({ interviewer_id: 'all', job_id: 'all', status: 'all', type: 'all' });
   const [view, setView] = useState('week');
   const [displayTz, setDisplayTz] = useState(() => localStorage.getItem('interviews_display_tz') || getBrowserTz());
@@ -116,9 +117,6 @@ export default function InterviewsPage() {
 
   useEffect(() => {
     load();
-    Promise.all([api.get('/users'), api.get('/jobs'), api.get('/interview-kits')])
-      .then(([u, j, k]) => { setUsers(u.data); setJobs(j.data); setKits(k.data); })
-      .catch(() => {});
   }, [load]);
 
   // Read-only overlay of Google Calendar events on the week/day grid. We keep

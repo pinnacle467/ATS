@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { api, errMsg } from '@/lib/api';
+import { useCachedUsers } from '@/lib/referenceCache';
 import { formatInTz, getBrowserTz, tzAbbr, TZ_PRESETS } from '@/lib/timezones';
 
 const TYPES = [
@@ -44,7 +45,8 @@ function wallClockInTzToUtcIso(dateStr, timeStr, tz) {
 
 export default function ScheduleInterviewDialog({ open, onOpenChange, onScheduled, presetCandidateId }) {
   const [candidates, setCandidates] = useState([]);
-  const [users, setUsers] = useState([]);
+  const [rawUsers] = useCachedUsers();
+  const users = useMemo(() => rawUsers.filter((x) => x.active !== false), [rawUsers]);
   const [form, setForm] = useState(() => ({
     candidate_id: presetCandidateId || '',
     type: 'phone_screen',
@@ -69,12 +71,10 @@ export default function ScheduleInterviewDialog({ open, onOpenChange, onSchedule
     if (!open) return;
     Promise.all([
       api.get('/candidates', { params: { status: 'active', limit: 500 } }),
-      api.get('/users'),
       api.get('/calendar/status').catch(() => ({ data: null })),
     ])
-      .then(([c, u, s]) => {
+      .then(([c, s]) => {
         setCandidates(c.data.items);
-        setUsers(u.data.filter((x) => x.active !== false));
         setCalStatus(s.data);
       })
       .catch(() => {});

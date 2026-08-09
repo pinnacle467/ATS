@@ -49,6 +49,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/context/AuthContext';
 import { isAdminOrHigher } from '@/lib/roles';
 import { api, errMsg } from '@/lib/api';
+import { useCachedJobs } from '@/lib/referenceCache';
 
 const RECO_LABEL = { strong_yes: 'Strong Yes', yes: 'Yes', no: 'No', strong_no: 'Strong No' };
 const RECO_COLOR = { strong_yes: 'bg-green-100 text-green-800', yes: 'bg-emerald-100 text-emerald-800', no: 'bg-orange-100 text-orange-800', strong_no: 'bg-red-100 text-red-800' };
@@ -171,7 +172,7 @@ export default function CandidateProfilePage() {
   const [rejectCategory, setRejectCategory] = useState('');
   const [pendingStage, setPendingStage] = useState(null);
   const [notFound, setNotFound] = useState(false);
-  const [jobs, setJobs] = useState([]);
+  const [jobs] = useCachedJobs();
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
   const [editingDetails, setEditingDetails] = useState(false);
   const [editForm, setEditForm] = useState({});
@@ -212,10 +213,6 @@ export default function CandidateProfilePage() {
       return () => clearTimeout(t);
     }
   }, [cand?.id, cand?.job_id, cand?.fit_score, cand?.job?.jd_text, load]);
-
-  useEffect(() => {
-    if (isRecruiter) api.get('/jobs').then((r) => setJobs(r.data || [])).catch(() => {});
-  }, [isRecruiter]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;

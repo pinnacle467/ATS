@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { api } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
+import { useCachedDepartments, useCachedJobs, useCachedUsers } from '@/lib/referenceCache';
 
 const timeAgo = (iso) => {
   if (!iso) return '';
@@ -27,24 +28,16 @@ export default function DashboardPage() {
   const [stats, setStats] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [activities, setActivities] = useState([]);
-  const [jobs, setJobs] = useState([]);
-  const [departments, setDepartments] = useState([]);
-  const [recruiters, setRecruiters] = useState([]);
+  const [jobs] = useCachedJobs();
+  const [departments] = useCachedDepartments();
+  const [users] = useCachedUsers();
+  const recruiters = useMemo(() => users.filter((x) => ['super_admin', 'admin', 'recruiter'].includes(x.role)), [users]);
   const [filters, setFilters] = useState({ job_id: 'all', department: 'all', recruiter_id: 'all' });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([
-      api.get('/jobs'),
-      api.get('/departments'),
-      api.get('/users'),
-      api.get('/dashboard/my-tasks'),
-      api.get('/activities?limit=15'),
-    ])
-      .then(([j, d, u, t, a]) => {
-        setJobs(j.data);
-        setDepartments(d.data);
-        setRecruiters(u.data.filter((x) => ['super_admin', 'admin', 'recruiter'].includes(x.role)));
+    Promise.all([api.get('/dashboard/my-tasks'), api.get('/activities?limit=15')])
+      .then(([t, a]) => {
         setTasks(t.data);
         setActivities(a.data);
       })

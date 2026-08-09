@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/context/AuthContext';
 import { api, errMsg } from '@/lib/api';
+import { refreshDepartments, refreshInterviewKits, refreshPipelineStages, refreshTags, refreshUsers } from '@/lib/referenceCache';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -64,6 +65,7 @@ function UsersTab() {
       setInviteOpen(false);
       setForm({ name: '', email: '', password: '', role: 'admin', title: '' });
       load();
+      refreshUsers();
     } catch (e) {
       toast.error(errMsg(e));
     }
@@ -74,6 +76,7 @@ function UsersTab() {
       await api.put(`/users/${u.id}`, { role });
       toast.success(`${u.name} is now ${ROLE_LABELS[role] || role}`);
       load();
+      refreshUsers();
     } catch (e) {
       toast.error(errMsg(e));
     }
@@ -84,6 +87,7 @@ function UsersTab() {
       await api.put(`/users/${u.id}`, { active });
       toast.success(`${u.name} ${active ? 'activated' : 'deactivated'}`);
       load();
+      refreshUsers();
     } catch (e) {
       toast.error(errMsg(e));
     }
@@ -95,6 +99,7 @@ function UsersTab() {
       await api.delete(`/users/${u.id}`);
       toast.success('User removed');
       load();
+      refreshUsers();
     } catch (e) {
       toast.error(errMsg(e));
     }
@@ -220,6 +225,7 @@ function PipelineTab() {
       await api.put('/settings/pipeline', { stages });
       toast.success('Pipeline stages saved');
       setDirty(false);
+      refreshPipelineStages();
     } catch (e) {
       toast.error(errMsg(e));
     }
@@ -297,6 +303,7 @@ function DepartmentsTagsTab() {
                   setNewDep('');
                   toast.success('Department added');
                   load();
+                  refreshDepartments();
                 } catch (e) { toast.error(errMsg(e)); }
               }}
             >Add</Button>
@@ -304,7 +311,7 @@ function DepartmentsTagsTab() {
           {departments.map((d) => (
             <div key={d.id} className="flex items-center justify-between border border-border rounded-lg px-3 py-2">
               <span className="text-sm">{d.name}</span>
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={async () => { await api.delete(`/departments/${d.id}`); load(); }} aria-label={`Delete ${d.name}`}>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={async () => { await api.delete(`/departments/${d.id}`); load(); refreshDepartments(); }} aria-label={`Delete ${d.name}`}>
                 <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
               </Button>
             </div>
@@ -327,6 +334,7 @@ function DepartmentsTagsTab() {
                   setNewTag('');
                   toast.success('Tag added');
                   load();
+                  refreshTags();
                 } catch (e) { toast.error(errMsg(e)); }
               }}
             >Add</Button>
@@ -335,7 +343,7 @@ function DepartmentsTagsTab() {
             {tags.map((t) => (
               <Badge key={t.id} variant="secondary" className="gap-1.5 py-1">
                 {t.name}
-                <button onClick={async () => { await api.delete(`/tags/${t.id}`); load(); }} aria-label={`Delete tag ${t.name}`} className="hover:text-destructive">×</button>
+                <button onClick={async () => { await api.delete(`/tags/${t.id}`); load(); refreshTags(); }} aria-label={`Delete tag ${t.name}`} className="hover:text-destructive">×</button>
               </Badge>
             ))}
           </div>
@@ -368,6 +376,7 @@ function KitsTab() {
       toast.success('Interview kit saved');
       setOpen(false);
       load();
+      refreshInterviewKits();
     } catch (e) {
       toast.error(errMsg(e));
     }
@@ -396,7 +405,7 @@ function KitsTab() {
               </ul>
               <div className="flex gap-2">
                 <Button size="sm" variant="outline" onClick={() => { setEditing(k); setForm({ stage: k.stage, title: k.title, questions: (k.questions || []).join('\n'), guidelines: k.guidelines || '' }); setOpen(true); }}>Edit</Button>
-                <Button size="sm" variant="ghost" onClick={async () => { await api.delete(`/interview-kits/${k.id}`); load(); }}>Delete</Button>
+                <Button size="sm" variant="ghost" onClick={async () => { await api.delete(`/interview-kits/${k.id}`); load(); refreshInterviewKits(); }}>Delete</Button>
               </div>
             </CardContent>
           </Card>
