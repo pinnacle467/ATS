@@ -634,6 +634,7 @@ export default function AdminPage() {
           <TabsTrigger value="pipeline" data-testid="admin-tab-pipeline">Pipeline Stages</TabsTrigger>
           <TabsTrigger value="org" data-testid="admin-tab-org">Departments & Tags</TabsTrigger>
           <TabsTrigger value="kits" data-testid="admin-tab-kits">Interview Kits</TabsTrigger>
+          <TabsTrigger value="offer_template" data-testid="admin-tab-offer-template">Offer Letter</TabsTrigger>
           <TabsTrigger value="audit" data-testid="admin-tab-audit">Audit Log</TabsTrigger>
           <TabsTrigger value="data" data-testid="admin-tab-data">Data Tools</TabsTrigger>
         </TabsList>
@@ -641,9 +642,68 @@ export default function AdminPage() {
         <TabsContent value="pipeline" className="mt-4"><PipelineTab /></TabsContent>
         <TabsContent value="org" className="mt-4"><DepartmentsTagsTab /></TabsContent>
         <TabsContent value="kits" className="mt-4"><KitsTab /></TabsContent>
+        <TabsContent value="offer_template" className="mt-4"><OfferTemplateTab /></TabsContent>
         <TabsContent value="audit" className="mt-4"><AuditTab /></TabsContent>
         <TabsContent value="data" className="mt-4"><IndustryBackfillTab /></TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+function OfferTemplateTab() {
+  const [subject, setSubject] = useState('');
+  const [htmlBody, setHtmlBody] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const load = () => {
+    api.get('/offers/settings/template').then((r) => {
+      setSubject(r.data.subject || '');
+      setHtmlBody(r.data.html_body || '');
+    }).finally(() => setLoading(false));
+  };
+  useEffect(() => { load(); }, []);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await api.put('/offers/settings/template', { subject, html_body: htmlBody });
+      toast.success('Offer letter template saved');
+    } catch (e) {
+      toast.error(errMsg(e, 'Could not save template'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const variables = ['{{candidate_name}}', '{{candidate_first_name}}', '{{job_title}}', '{{company_name}}', '{{start_date}}',
+    '{{base_salary}}', '{{bonus}}', '{{equity}}', '{{reporting_manager}}', '{{offer_expiry_date}}', '{{custom_notes}}', '{{recruiter_name}}'];
+
+  if (loading) return <div className="text-sm text-muted-foreground py-8 text-center">Loading…</div>;
+
+  return (
+    <div className="space-y-4 max-w-2xl">
+      <Card className="shadow-none">
+        <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Offer Letter Template</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Used whenever a fully-approved offer is sent to a candidate — merge fields below are replaced automatically.
+          </p>
+          <div className="space-y-1.5">
+            <Label>Subject</Label>
+            <Input value={subject} onChange={(e) => setSubject(e.target.value)} data-testid="offer-template-subject-input" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Letter Body (HTML)</Label>
+            <Textarea value={htmlBody} onChange={(e) => setHtmlBody(e.target.value)} className="min-h-[280px] font-mono text-xs" data-testid="offer-template-body-textarea" />
+          </div>
+          <div className="rounded-lg bg-secondary/50 border border-border p-2 text-xs text-muted-foreground">
+            <span className="font-medium">Variables:</span>{' '}
+            {variables.map((v) => <code key={v} className="mx-0.5 px-1 py-0.5 bg-card rounded border border-border">{v}</code>)}
+          </div>
+          <Button onClick={save} disabled={saving} data-testid="offer-template-save-button">{saving ? 'Saving…' : 'Save Template'}</Button>
+        </CardContent>
+      </Card>
     </div>
   );
 }

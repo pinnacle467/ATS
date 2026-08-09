@@ -42,6 +42,7 @@ COLLECTIONS_WITH_UNIQUE_ID: tuple[str, ...] = (
     'password_resets',
     'applications',
     'import_sessions',
+    'offers',
 )
 
 
@@ -103,6 +104,18 @@ async def ensure_indexes(db) -> dict:
             report['existed'].append('candidates.industry')
         else:
             report['errors'].append({'collection': 'candidates', 'field': 'industry', 'error': msg})
+
+    # offers.public_token — looked up on every candidate-facing accept/decline
+    # page load, so it needs to stay fast as offers accumulate.
+    try:
+        await db.offers.create_index('public_token', name='public_token_lookup')
+        report['created'].append('offers.public_token')
+    except Exception as e:  # noqa: BLE001
+        msg = str(e)
+        if 'already exists' in msg.lower() or 'IndexOptionsConflict' in msg:
+            report['existed'].append('offers.public_token')
+        else:
+            report['errors'].append({'collection': 'offers', 'field': 'public_token', 'error': msg})
 
     return report
 

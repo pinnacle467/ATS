@@ -43,6 +43,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { StageBadge, REJECTION_REASONS, SOURCES } from '@/pages/CandidatesPage';
 import ChangeLog from '@/components/ChangeLog';
 import { IndustryChips, IndustryTagEditor } from '@/components/IndustryPicker';
+import OfferPanel from '@/components/OfferPanel';
 import RoundFeedbackSection from '@/components/RoundFeedbackSection';
 import SendEmailDialog from '@/components/SendEmailDialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -663,6 +664,7 @@ export default function CandidateProfilePage() {
         <TabsList data-testid="candidate-tabs-list">
           <TabsTrigger value="overview" data-testid="candidate-tab-overview">Overview</TabsTrigger>
           <TabsTrigger value="feedback" data-testid="candidate-tab-feedback">Interviews & Feedback</TabsTrigger>
+          <TabsTrigger value="offer" data-testid="candidate-tab-offer">Offer</TabsTrigger>
         </TabsList>
         <TabsContent value="overview" className="mt-4 space-y-5">
         <div className="grid lg:grid-cols-3 gap-5">
@@ -1103,6 +1105,9 @@ export default function CandidateProfilePage() {
             canEdit={isRecruiter}
             onChanged={load}
           />
+        </TabsContent>
+        <TabsContent value="offer" className="mt-4">
+          <OfferPanel candidateId={cand.id} candidateName={cand.name} isRecruiter={isRecruiter} />
         </TabsContent>
       </Tabs>
 

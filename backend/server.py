@@ -24,6 +24,7 @@ import routes_admin
 import routes_notifications
 import routes_imports
 import routes_calendar
+import routes_offers
 from reminder_scheduler import reminder_loop
 from snapshot_scheduler import install_pre_commit_hook
 from reply_scanner import reply_scan_loop
@@ -52,6 +53,7 @@ api_router.include_router(routes_admin.router)
 api_router.include_router(routes_notifications.router)
 api_router.include_router(routes_imports.router)
 api_router.include_router(routes_calendar.router)
+api_router.include_router(routes_offers.router)
 api_router.include_router(routes_career.router)
 api_router.include_router(routes_career_security.router)
 api_router.include_router(routes_analytics.router)

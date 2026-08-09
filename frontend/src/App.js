@@ -14,6 +14,8 @@ import ImportCandidatesPage from '@/pages/ImportCandidatesPage';
 import InterviewsPage from '@/pages/InterviewsPage';
 import JobsPage from '@/pages/JobsPage';
 import JobDetailPage from '@/pages/JobDetailPage';
+import OffersPage from '@/pages/OffersPage';
+import PublicOfferPage from '@/pages/PublicOfferPage';
 import AdminPage from '@/pages/AdminPage';
 import MyIntegrationsPage from '@/pages/MyIntegrationsPage';
 import AccountPage from '@/pages/AccountPage';
@@ -74,6 +76,8 @@ function App() {
           <Route path="/candidates/import" element={<Protected roles={['admin', 'recruiter']}><ImportCandidatesPage /></Protected>} />
           <Route path="/candidates/:id" element={<Protected><CandidateProfilePage /></Protected>} />
           <Route path="/interviews" element={<Protected><InterviewsPage /></Protected>} />
+          <Route path="/offers" element={<Protected><OffersPage /></Protected>} />
+          <Route path="/offer/:token" element={<PublicOfferPage />} />
           <Route path="/jobs" element={<Protected roles={['admin', 'recruiter']}><JobsPage /></Protected>} />
           <Route path="/jobs/:id" element={<Protected roles={['admin', 'recruiter']}><JobDetailPage /></Protected>} />
           <Route path="/admin" element={<Protected roles={['admin']}><AdminPage /></Protected>} />
