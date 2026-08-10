@@ -229,6 +229,11 @@ async def list_interviews(
         q['job_id'] = job_id
     if status:
         q['status'] = status
+    else:
+        # Hide self-scheduled requests that the candidate hasn't booked yet —
+        # they have no scheduled_at and belong on the Scheduling dashboard, not
+        # the interviews calendar. Booked ones (scheduled_at set) show normally.
+        q['$or'] = [{'self_scheduled': {'$ne': True}}, {'scheduled_at': {'$ne': None}}]
     if from_date or to_date:
         rng = {}
         if from_date:

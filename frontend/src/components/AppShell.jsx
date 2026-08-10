@@ -5,6 +5,7 @@ import {
   BarChart3,
   Briefcase,
   CalendarDays,
+  Link2,
   FileSignature,
   FileText,
   Globe,
@@ -40,6 +41,7 @@ const NAV = [
   { to: '/candidates', label: 'Candidates', icon: Users, testid: 'sidebar-nav-candidates' },
   { to: '/jobs', label: 'Jobs', icon: Briefcase, roles: ['admin', 'recruiter'], testid: 'sidebar-nav-jobs' },
   { to: '/interviews', label: 'Interviews', icon: CalendarDays, testid: 'sidebar-nav-interviews' },
+  { to: '/scheduling', label: 'Scheduling', icon: Link2, roles: ['admin', 'recruiter'], testid: 'sidebar-nav-scheduling' },
   { to: '/offers', label: 'Offers', icon: FileSignature, testid: 'sidebar-nav-offers' },
   { to: '/admin', label: 'Admin', icon: Settings, roles: ['admin'], testid: 'sidebar-nav-admin' },
 ];

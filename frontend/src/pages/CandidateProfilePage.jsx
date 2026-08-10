@@ -46,6 +46,7 @@ import { IndustryChips, IndustryTagEditor } from '@/components/IndustryPicker';
 import OfferPanel from '@/components/OfferPanel';
 import RoundFeedbackSection from '@/components/RoundFeedbackSection';
 import SendEmailDialog from '@/components/SendEmailDialog';
+import ScheduleRequestDialog from '@/components/ScheduleRequestDialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/context/AuthContext';
 import { isAdminOrHigher } from '@/lib/roles';
@@ -175,6 +176,7 @@ export default function CandidateProfilePage() {
   const [notFound, setNotFound] = useState(false);
   const [jobs] = useCachedJobs();
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+  const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
   const [editingDetails, setEditingDetails] = useState(false);
   const [editForm, setEditForm] = useState({});
   const [savingDetails, setSavingDetails] = useState(false);
@@ -630,6 +632,17 @@ export default function CandidateProfilePage() {
               data-testid="candidate-send-email-button"
             >
               <Mail className="h-4 w-4 mr-1.5" /> Send Email
+            </Button>
+          )}
+          {isRecruiter && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setScheduleDialogOpen(true)}
+              title="Send a scheduling link so the candidate can pick a time"
+              data-testid="candidate-schedule-interview-button"
+            >
+              <CalendarDays className="h-4 w-4 mr-1.5" /> Schedule Interview
             </Button>
           )}
           {isRecruiter && (
@@ -1189,6 +1202,16 @@ export default function CandidateProfilePage() {
         candidateNames={cand ? [cand.name] : []}
         onSent={() => load()}
       />
+
+      {/* Schedule Interview dialog */}
+      {cand && (
+        <ScheduleRequestDialog
+          open={scheduleDialogOpen}
+          onOpenChange={setScheduleDialogOpen}
+          candidate={cand}
+          onCreated={() => load()}
+        />
+      )}
     </div>
   );
 }

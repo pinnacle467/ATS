@@ -109,3 +109,19 @@ The following MUST be done, in order, at the very start of every new chat import
 - Full Gmail API scope/consent runtime validation (only OAuth URL generation verified so far).
 - Full Google Calendar/Meet browser consent + interview scheduling end-to-end validation (only auth-URL generation verified on VPS so far).
 - One-off 400 console error seen once on Jobs page during a previous nginx-performance test run — not reproduced since, low priority watch item.
+
+---
+
+## Feature: Candidate Self-Scheduling (added Aug 2026)
+
+**Phase 1 (DONE, backend verified 15/15):** Recruiter opens "Schedule Interview" on a candidate → configures stage/title/type/duration/interviewers/attendees/date-range/timezone/instructions → generates a secure public scheduling link (`/schedule/interview/{token}`) → candidate (no login) picks timezone + slot → double-booking-safe booking → Google Calendar event + Meet auto-created (when a recruiter Google account is connected; degrades gracefully to book-without-event otherwise) → confirmation page with Add-to-Google-Calendar / Reschedule / Cancel. Candidate reschedule + cancel supported. Emails are QUEUED/LOGGED only (db.email_log status='queued') until an email channel key is provided.
+
+Key modules: `scheduling_engine.py` (slot generation intersecting working hours + ATS conflicts + Google free/busy, DST-correct), `scheduling_emails.py` (queued templates), `routes_scheduling.py` (recruiter + public token endpoints). Settings in `db.settings key='scheduling'`.
+
+**Phase 2 (DONE, tested 100%/100% — Aug 2026):** New `/scheduling` recruiter dashboard (nav item, admin/recruiter only) — stat cards (Total/Awaiting Candidate/Scheduled/Cancelled), status filter bar (all/draft/awaiting_candidate/scheduled/expired/cancelled), search by candidate/job, full requests table (candidate/job-stage/type/status/link-sent/opened/scheduled-for), row Actions dropdown (Copy link, Send/Resend link, Disable link, Regenerate link, View timeline). Backend added `display_status` (folds link_disabled/expired/scheduled/cancelled/draft/awaiting_candidate into one field) to `_enrich_request()` and a new `GET /scheduling/requests/{id}/timeline` endpoint (audit_log scoped to that interview) surfaced as a right-side Sheet with a chronological icon timeline (request created → link generated → sent → opened → booked/rescheduled/cancelled/reminder sent).
+
+**Phase 3 (DONE, tested — Aug 2026):** New `backend/scheduling_reminders.py` background loop (`scheduling_reminder_loop`, runs every 5 min from `server.py` startup, mirrors the existing feedback `reminder_loop` pattern) sends 24h/1h reminders (configurable via `scheduling` settings `reminder_offsets_hours`) to the candidate + all interviewers for booked (`scheduling_status='scheduled'`) self-scheduled interviews. Uses its own `scheduling_reminders_sent: list[int]` field on the interview doc (deliberately separate from the feedback loop's per-interviewer `reminders_sent` dict to avoid a field-shape collision) with atomic `$addToSet` claim + rollback-on-failure, and — critically — never fires a stale larger threshold (e.g. "24h") after a smaller one (e.g. "1h") was already sent, even after scheduler downtime. Reminders are queued via the existing `scheduling_emails.queue_scheduling_email('interview_reminder', ...)` (logged to `db.email_log`, not live-delivered — same as all other scheduling emails). Working-hours/scheduling-settings admin UI (`PUT /scheduling/settings` already exists on the backend) was NOT built this round — still open, see Backlog.
+
+**Pending external setup:** GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET (+ register redirect URI) to enable real free/busy + Meet; an email channel key (Resend) to switch emails from queued to live.
+
+**Backlog:** Scheduling settings admin UI (working hours/timezone/min notice/horizon/reminder offsets — backend `GET/PUT /api/scheduling/settings` already exists, just needs a screen, likely under Admin Panel).

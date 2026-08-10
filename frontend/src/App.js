@@ -31,6 +31,8 @@ import CareerHomePage from '@/pages/public/CareerHomePage';
 import CareerJobsListPage from '@/pages/public/CareerJobsListPage';
 import CareerJobDetailPage from '@/pages/public/CareerJobDetailPage';
 import CareerStaticPage from '@/pages/public/CareerStaticPage';
+import SchedulePage from '@/pages/public/SchedulePage';
+import SchedulingDashboardPage from '@/pages/SchedulingDashboardPage';
 
 // Role hierarchy alias map — mirrors backend/permissions.py ROLE_ALIASES so
 // super_admin passes any 'admin'/'recruiter' check, and interview_panel passes
@@ -76,6 +78,7 @@ function App() {
           <Route path="/candidates/import" element={<Protected roles={['admin', 'recruiter']}><ImportCandidatesPage /></Protected>} />
           <Route path="/candidates/:id" element={<Protected><CandidateProfilePage /></Protected>} />
           <Route path="/interviews" element={<Protected><InterviewsPage /></Protected>} />
+          <Route path="/scheduling" element={<Protected roles={['admin', 'recruiter']}><SchedulingDashboardPage /></Protected>} />
           <Route path="/offers" element={<Protected><OffersPage /></Protected>} />
           <Route path="/offer/:token" element={<PublicOfferPage />} />
           <Route path="/jobs" element={<Protected roles={['admin', 'recruiter']}><JobsPage /></Protected>} />
@@ -94,6 +97,7 @@ function App() {
           <Route path="/careers/jobs" element={<CareerPublicLayout><CareerJobsListPage /></CareerPublicLayout>} />
           <Route path="/careers/jobs/:slug" element={<CareerPublicLayout><CareerJobDetailPage /></CareerPublicLayout>} />
           <Route path="/careers/:key" element={<CareerPublicLayout><CareerStaticPage /></CareerPublicLayout>} />
+          <Route path="/schedule/interview/:token" element={<SchedulePage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>

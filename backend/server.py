@@ -25,7 +25,9 @@ import routes_notifications
 import routes_imports
 import routes_calendar
 import routes_offers
+import routes_scheduling
 from reminder_scheduler import reminder_loop
+from scheduling_reminders import scheduling_reminder_loop
 from snapshot_scheduler import install_pre_commit_hook
 from reply_scanner import reply_scan_loop
 from email_templates import seed_default_templates
@@ -54,6 +56,7 @@ api_router.include_router(routes_notifications.router)
 api_router.include_router(routes_imports.router)
 api_router.include_router(routes_calendar.router)
 api_router.include_router(routes_offers.router)
+api_router.include_router(routes_scheduling.router)
 api_router.include_router(routes_career.router)
 api_router.include_router(routes_career_security.router)
 api_router.include_router(routes_analytics.router)
@@ -106,6 +109,8 @@ async def startup():
     except Exception:
         logger.exception('ensure_indexes failed')
     asyncio.create_task(reminder_loop())
+    asyncio.create_task(scheduling_reminder_loop())
+    logger.info('scheduling_reminder_loop scheduled — sending 24h/1h interview reminders every 5 minutes')
     # Snapshot durability: instead of a periodic timer, we install a git
     # pre-commit hook that dumps MongoDB → data_seed/snapshot.json
     # synchronously before every commit (including Emergent's "Save to
