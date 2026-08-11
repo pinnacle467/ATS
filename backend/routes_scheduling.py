@@ -21,7 +21,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from auth import get_current_user, require_roles
-from database import db
+from database import db, raw_db
+from tenant_context import set_tenant_id
 from google_calendar import create_event, delete_event, get_credentials_for_user, update_event
 from google.auth.exceptions import GoogleAuthError, RefreshError
 from googleapiclient.errors import HttpError
@@ -101,9 +102,13 @@ async def _enrich_request(iv: dict) -> dict:
 
 
 async def _find_by_token(token: str) -> dict:
-    iv = await db.interviews.find_one({'scheduling_token': token})
+    """Candidate-facing lookup — the token is a global secret, so we search
+    unscoped and then LOCK the request to that interview's tenant."""
+    iv = await raw_db.interviews.find_one({'scheduling_token': token})
     if not iv:
         raise HTTPException(status_code=404, detail='Scheduling link not found')
+    set_tenant_id(iv.get('tenant_id'))
+    iv.pop('_id', None)
     return iv
 
 

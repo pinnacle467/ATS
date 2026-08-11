@@ -12,6 +12,7 @@ import { api, errMsg } from '@/lib/api';
 import { useCareerSettings, useCareerSecurity } from './CareerPublicLayout';
 import { setMeta } from './CareerStaticPage';
 import { track } from './tracking';
+import { careersPath, getTenantSlug } from '@/lib/tenant';
 
 const EMPTY_FORM = {
   first_name: '', last_name: '', email: '', phone: '', location: '', linkedin_url: '', portfolio_url: '',
@@ -20,7 +21,7 @@ const EMPTY_FORM = {
 };
 
 export default function CareerJobDetailPage() {
-  const { slug } = useParams();
+  const { jobSlug: slug } = useParams();
   const navigate = useNavigate();
   const settings = useCareerSettings();
   const security = useCareerSecurity();
@@ -53,7 +54,7 @@ export default function CareerJobDetailPage() {
     setMeta('og:description', desc, true);
     setMeta('og:type', 'website', true);
     setMeta('og:url', window.location.href, true);
-    setMeta('og:image', `${backendUrl}/api/career/public/og-image`, true);
+    setMeta('og:image', `${backendUrl}/api/career/public/og-image?tenant=${getTenantSlug() || ''}`, true);
     setMeta('twitter:card', 'summary_large_image');
     setMeta('twitter:title', title);
     setMeta('twitter:description', desc);
@@ -62,7 +63,7 @@ export default function CareerJobDetailPage() {
     if (settings.jobposting_seo_enabled === false) return;
     const existing = document.getElementById('jobposting-jsonld');
     if (existing) existing.remove();
-    fetch(`${backendUrl}/api/career/public/jobs/${slug}/jobposting.json`)
+    fetch(`${backendUrl}/api/career/public/jobs/${slug}/jobposting.json?tenant=${getTenantSlug() || ''}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (!data) return;
@@ -116,7 +117,7 @@ export default function CareerJobDetailPage() {
     return (
       <div className="px-4 py-20 text-center" data-testid="career-job-not-found">
         <h1 className="font-display text-2xl font-semibold mb-2">This role is no longer available</h1>
-        <Button variant="outline" onClick={() => navigate('/careers/jobs')} className="mt-4">Browse Open Roles</Button>
+        <Button variant="outline" onClick={() => navigate(careersPath('/jobs'))} className="mt-4">Browse Open Roles</Button>
       </div>
     );
   }
@@ -125,7 +126,7 @@ export default function CareerJobDetailPage() {
 
   return (
     <div className="px-4 sm:px-6 py-10 max-w-3xl mx-auto" data-testid="career-job-detail-page">
-      <Link to="/careers/jobs" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-6">
+      <Link to={careersPath('/jobs')} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-6">
         <ArrowLeft className="h-3.5 w-3.5" /> All Roles
       </Link>
 

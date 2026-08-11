@@ -11,6 +11,7 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { api, errMsg } from '@/lib/api';
+import { careersPath, getTenantSlug } from '@/lib/tenant';
 
 const PAGE_KEYS = [
   { key: 'about', label: 'About Us' },
@@ -113,7 +114,7 @@ export default function CareerContentPage() {
                 </div>
                 <div className="flex items-center gap-3">
                   {current.published && (
-                    <a href={`${window.location.origin}/careers/${active}`} target="_blank" rel="noreferrer">
+                    <a href={`${window.location.origin}${careersPath(`/${active}`)}`} target="_blank" rel="noreferrer">
                       <Button variant="outline" size="sm"><ExternalLink className="h-3.5 w-3.5 mr-1" /> Preview live</Button>
                     </a>
                   )}
@@ -137,7 +138,7 @@ export default function CareerContentPage() {
                   <Label>Hero image</Label>
                   <div className="rounded-xl border border-border overflow-hidden bg-secondary aspect-[16/6] max-w-2xl mt-1">
                     {current.hero_image_file_id ? (
-                      <img key={heroVersion} src={`${backendUrl}/api/career/public/pages/${active}/hero?v=${heroVersion}`} alt="" className="h-full w-full object-cover" />
+                      <img key={heroVersion} src={`${backendUrl}/api/career/public/pages/${active}/hero?v=${heroVersion}&tenant=${getTenantSlug() || ''}`} alt="" className="h-full w-full object-cover" />
                     ) : (
                       <div className="h-full w-full flex items-center justify-center text-xs text-muted-foreground"><ImagePlus className="h-6 w-6 mr-2 opacity-40" /> No hero image</div>
                     )}

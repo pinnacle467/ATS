@@ -14,6 +14,7 @@ import {
   LogOut,
   Mail,
   Menu,
+  Palette,
   Search,
   Settings,
   Shield,
@@ -44,6 +45,7 @@ const NAV = [
   { to: '/scheduling', label: 'Scheduling', icon: Link2, roles: ['admin', 'recruiter'], testid: 'sidebar-nav-scheduling' },
   { to: '/offers', label: 'Offers', icon: FileSignature, testid: 'sidebar-nav-offers' },
   { to: '/admin', label: 'Admin', icon: Settings, roles: ['admin'], testid: 'sidebar-nav-admin' },
+  { to: '/workspace', label: 'Workspace', icon: Palette, roles: ['admin'], testid: 'sidebar-nav-workspace' },
 ];
 
 const CAREER_NAV = [
@@ -66,7 +68,7 @@ const timeAgo = (iso) => {
 };
 
 export default function AppShell({ children }) {
-  const { user, logout } = useAuth();
+  const { user, tenant, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [notif, setNotif] = useState({ items: [], unread: 0 });
@@ -111,6 +113,7 @@ function roleSatisfiesNav(userRole, requiredRoles) {
 }
 
   const navItems = NAV.filter((n) => !n.roles || roleSatisfiesNav(user?.role, n.roles));
+  const impersonating = !!localStorage.getItem('ats_platform_token');
 
   return (
     <div className="min-h-screen bg-background">
@@ -122,8 +125,14 @@ function roleSatisfiesNav(userRole, requiredRoles) {
       >
         <div className="h-14 flex items-center gap-2 px-5 border-b border-border">
           <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity" data-testid="app-logo-link">
-            <PinnacleLogo size={32} />
-            <span className="font-display font-semibold text-lg tracking-tight">Pinnacle ATS</span>
+            {tenant?.branding?.logo_url ? (
+              <img src={tenant.branding.logo_url} alt={tenant.name} className="h-8 w-8 rounded-lg object-cover shrink-0" />
+            ) : (
+              <PinnacleLogo size={32} />
+            )}
+            <span className="font-display font-semibold text-lg tracking-tight truncate" data-testid="workspace-name">
+              {tenant?.branding?.company_name || tenant?.name || 'Pinnacle ATS'}
+            </span>
           </Link>
         </div>
         <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
@@ -197,6 +206,29 @@ function roleSatisfiesNav(userRole, requiredRoles) {
 
       {/* Main */}
       <div className="lg:pl-[240px]">
+        {impersonating && (
+          <div
+            className="sticky top-0 z-30 bg-slate-900 text-slate-100 text-xs px-4 sm:px-6 py-2 flex items-center justify-between gap-3"
+            data-testid="impersonation-banner"
+          >
+            <span>
+              Platform view — you are inside{' '}
+              <strong>{tenant?.branding?.company_name || tenant?.name}</strong> as {user?.email}
+            </span>
+            <button
+              className="underline underline-offset-2 hover:text-teal-300 font-medium"
+              data-testid="exit-impersonation-button"
+              onClick={() => {
+                localStorage.removeItem('ats_token');
+                localStorage.removeItem('ats_user');
+                localStorage.removeItem('ats_tenant');
+                window.location.href = '/platform';
+              }}
+            >
+              Exit to control panel
+            </button>
+          </div>
+        )}
         {/* Topbar */}
         <header className="sticky top-0 z-20 h-14 bg-card border-b border-border flex items-center gap-3 px-4 sm:px-6">
           <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setMobileOpen(true)} aria-label="Open menu">

@@ -125,3 +125,78 @@ Key modules: `scheduling_engine.py` (slot generation intersecting working hours 
 **Pending external setup:** GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET (+ register redirect URI) to enable real free/busy + Meet; an email channel key (Resend) to switch emails from queued to live.
 
 **Backlog:** Scheduling settings admin UI (working hours/timezone/min notice/horizon/reminder offsets — backend `GET/PUT /api/scheduling/settings` already exists, just needs a screen, likely under Admin Panel).
+
+---
+
+## Feature: MULTI-TENANT SaaS conversion (June 2026 — built)
+
+User goal: turn the single-tenant ATS into a multi-tenant SaaS — shared MongoDB with `tenant_id`
+row-level isolation, a platform Super Admin panel for provisioning, slug-based tenant routing,
+tenant-scoped auth, and per-tenant white-labeling.
+
+### User decisions (confirmed in chat)
+- Founding tenant = **"Context66 Data"**, slug **`context66`** → `/context66/login`. All pre-existing
+  real data (388 candidates, 9 jobs, 82 interviews, 3 users) was migrated into it.
+- Platform owner lives OUTSIDE all tenants (`platform_admins` collection), signs in at `/platform/login`,
+  cannot read tenant data directly — only via explicit **impersonation**.
+- Roles unchanged inside tenants (super_admin / admin / interview_panel / vendor) + `platform_owner` above them.
+- New tenants start **completely empty** (no demo data) but get default pipeline stages + email templates.
+- Branding = company name, logo upload, accent colour, tagline (login page + app sidebar).
+
+### How isolation works (READ BEFORE TOUCHING DATA CODE)
+- `backend/tenant_context.py` — ContextVar holding the current `tenant_id`, plus an `in_request` flag
+  and `TenantScopeError`. `GLOBAL_COLLECTIONS = {tenants, platform_admins, password_resets, counters}`.
+- `backend/tenant_db.py` — `TenantDatabase`/`TenantCollection` Motor proxy. Every read gets
+  `tenant_id` merged into its filter, every insert gets it stamped, `aggregate()` gets a leading
+  `$match`. **Fail-closed**: touching a tenant-owned collection during an HTTP request with no
+  resolved tenant raises `TenantScopeError` → HTTP 400. Background loops (outside a request) may run
+  unscoped on purpose and set the tenant per item.
+- `backend/database.py` exports `raw_db` (unscoped, platform/migration only) and `db` (scoped proxy).
+  Route code keeps using `from database import db` — nothing else changed in 10k lines of routes.
+- Tenant resolution order: JWT `tid` (via `auth.get_current_user`) > `X-Tenant-Slug` header /
+  `?tenant=` query (middleware in `server.py`) > public token records (offers/scheduling look the row
+  up with `raw_db`, then `set_tenant_id(row['tenant_id'])`).
+- `counters` are keyed `"<tenant_id>:candidate_seq"` / `"<tenant_id>:job_seq"` (see `utils.py`).
+- `users` uniqueness is now the compound index `(tenant_id, email)` — the same person can exist in
+  two workspaces. Legacy global `email_unique` index is dropped on boot.
+- `migrate_tenancy.py` runs on every startup (idempotent): founding tenant → backfill `tenant_id`
+  everywhere it's missing → seed the platform owner.
+
+### API added
+- `POST /api/platform/login`, `GET /api/platform/me|tenants|stats`,
+  `POST /api/platform/tenants`, `PATCH/DELETE /api/platform/tenants/{id}`,
+  `POST /api/platform/tenants/{id}/impersonate`
+- `GET /api/tenants/by-slug/{slug}` (public, for the login page), `GET /api/tenant/me`,
+  `PUT /api/tenant/branding`, `POST/DELETE /api/tenant/logo`
+- `POST /api/auth/login` now REQUIRES a workspace (`tenant_slug` in body or `X-Tenant-Slug` header)
+  and returns `{token, user, tenant}`. `POST /api/auth/forgot-password` also requires the workspace;
+  reset records store `tenant_id` and the reset/verify endpoints re-scope from the record.
+
+### Frontend
+- `lib/tenant.js` (slug storage, `loginPath`, `careersPath`, hex→HSL `applyAccent`),
+  `lib/api.js` (sends `X-Tenant-Slug`; separate `platformApi` using `ats_platform_token`),
+  `components/TenantGate.jsx` (pins the slug before children mount).
+- Routes: `/login` = workspace picker, `/:slug/login` = tenant login (branded),
+  `/:slug/careers*` = public careers portal, `/platform/login` + `/platform` = control panel,
+  `/workspace` = tenant branding page. Legacy `/careers*` redirects to `/<stored slug>/careers`.
+- Public asset `<img>`/`<a>` URLs (career logo/hero/og-image/media, robots, sitemap) append
+  `?tenant=<slug>` because raw image requests carry no headers.
+- `AppShell` shows the tenant name/logo and, while impersonating, a "Platform view … Exit to control
+  panel" banner.
+
+### Testing status (June 2026)
+- Testing agent iteration 2 + expanded pytest suite: **38/38 backend tests pass**; no cross-tenant
+  leakage found on any module; platform provisioning/suspension/impersonation/branding verified;
+  frontend flows for both tenants + platform panel + branding verified in iteration 2.
+- Known PRE-EXISTING (not multi-tenancy) behaviours, intentionally unchanged: `/api/interviews`
+  returns 80 of 82 rows because unbooked self-scheduling requests are filtered there (they appear on
+  `/api/scheduling/requests`); `/api/interviews/{id}` has no GET/DELETE (405).
+- User asked to self-test the final polish pass (plan selector, impersonation banner, slug-prefixed
+  career links) manually.
+
+### Backlog (multi-tenancy)
+- P1: per-tenant billing/plan enforcement (limits per plan; `plan` field already exists).
+- P1: tenant-aware background loops iterating tenants explicitly instead of per-row scoping.
+- P2: invite-by-email flow for new workspace users (today the platform owner sets a temp password).
+- P2: custom domain per tenant (career portal `custom_domain` field exists but is single-tenant logic).
+- P2: platform-level audit trail of impersonation/suspension events in a dedicated collection.

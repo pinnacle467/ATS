@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { api } from '@/lib/api';
+import { careersPath } from '@/lib/tenant';
 
 export default function CareerJobsListPage() {
   const [jobs, setJobs] = useState([]);
@@ -62,7 +63,7 @@ export default function CareerJobsListPage() {
         {jobs.map((j) => (
           <Link
             key={j.id}
-            to={`/careers/jobs/${j.slug}`}
+            to={careersPath(`/jobs/${j.slug}`)}
             className="block border border-border rounded-xl p-5 hover:border-primary/50 hover:shadow-sm transition-all bg-card"
             data-testid={`career-job-card-${j.id}`}
           >

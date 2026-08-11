@@ -65,17 +65,45 @@ async def ensure_indexes(db) -> dict:
                 report['errors'].append({'collection': coll_name, 'field': 'id', 'error': msg})
                 logger.error(f'Failed to create unique index on {coll_name}.id: {msg}')
 
-    # Users.email must be unique (app lower-cases on insert; enforce here too)
+    # Users.email must be unique WITHIN a tenant (the same person can exist in
+    # two workspaces). Drops the legacy global email_unique index if present.
     try:
-        await db.users.create_index('email', unique=True, name='email_unique')
-        report['created'].append('users.email')
+        existing = await db.users.index_information()
+        if 'email_unique' in existing:
+            await db.users.drop_index('email_unique')
+            logger.info('Dropped legacy global users.email_unique index')
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        await db.users.create_index([('tenant_id', 1), ('email', 1)], unique=True, name='tenant_email_unique')
+        report['created'].append('users.tenant_id+email')
     except Exception as e:  # noqa: BLE001
         msg = str(e)
         if 'already exists' in msg.lower() or 'IndexOptionsConflict' in msg:
-            report['existed'].append('users.email')
+            report['existed'].append('users.tenant_id+email')
         else:
-            report['errors'].append({'collection': 'users', 'field': 'email', 'error': msg})
-            logger.error(f'Failed to create unique index on users.email: {msg}')
+            report['errors'].append({'collection': 'users', 'field': 'tenant_id+email', 'error': msg})
+            logger.error(f'Failed to create unique index on users.tenant_id+email: {msg}')
+
+    # tenants registry
+    try:
+        await db.tenants.create_index('slug', unique=True, name='slug_unique')
+        await db.tenants.create_index('id', unique=True, name='id_unique')
+        await db.platform_admins.create_index('email', unique=True, name='email_unique')
+        report['created'].append('tenants.slug')
+    except Exception as e:  # noqa: BLE001
+        msg = str(e)
+        if 'already exists' in msg.lower() or 'IndexOptionsConflict' in msg:
+            report['existed'].append('tenants.slug')
+        else:
+            report['errors'].append({'collection': 'tenants', 'field': 'slug', 'error': msg})
+
+    # tenant_id lookup indexes on the hot collections
+    for coll_name in ('candidates', 'jobs', 'interviews', 'users', 'activities', 'notes', 'offers', 'files'):
+        try:
+            await db[coll_name].create_index('tenant_id', name='tenant_lookup')
+        except Exception:  # noqa: BLE001
+            pass
 
     # password_resets.token_hash unique (defense-in-depth against collisions)
     try:

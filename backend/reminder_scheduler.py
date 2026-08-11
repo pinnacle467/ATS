@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 
 from database import db
 from feedback_emails import REMINDER_INTERVALS_HOURS, send_scorecard_request
+from tenant_context import set_tenant_id
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,9 @@ async def _check_once():
     now = datetime.now(timezone.utc)
 
     for iv in ivs:
+        # Background loops run outside any request — scope each item to its
+        # own tenant so all reads/writes below stay isolated.
+        set_tenant_id(iv.get('tenant_id'))
         try:
             completed_at = datetime.fromisoformat(iv['completed_at'].replace('Z', '+00:00'))
         except (ValueError, TypeError, KeyError):

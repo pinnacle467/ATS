@@ -5,6 +5,13 @@ from datetime import datetime, timezone
 from pymongo import ReturnDocument
 
 from database import db
+from tenant_context import get_tenant_id
+
+
+def _counter_id(name: str) -> str:
+    """Counters are shared-collection but per-tenant: prefix the _id."""
+    tid = get_tenant_id()
+    return f'{tid}:{name}' if tid else name
 
 
 def slugify(text: str) -> str:
@@ -72,7 +79,7 @@ async def notify(user_id: str, type_: str, message: str, link: str = None):
 async def next_candidate_code() -> str:
     """Atomically issue the next human-readable candidate ID, e.g. CAND-0001."""
     doc = await db.counters.find_one_and_update(
-        {'_id': 'candidate_seq'},
+        {'_id': _counter_id('candidate_seq')},
         {'$inc': {'seq': 1}},
         upsert=True,
         return_document=ReturnDocument.AFTER,
@@ -86,7 +93,7 @@ async def next_job_code() -> str:
     Uses a MongoDB counter doc `job_seq` so codes are globally monotonic even
     if two admins create jobs concurrently."""
     doc = await db.counters.find_one_and_update(
-        {'_id': 'job_seq'},
+        {'_id': _counter_id('job_seq')},
         {'$inc': {'seq': 1}},
         upsert=True,
         return_document=ReturnDocument.AFTER,

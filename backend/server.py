@@ -10,6 +10,7 @@ load_dotenv(ROOT_DIR / '.env')
 
 from fastapi import APIRouter, FastAPI
 from starlette.middleware.cors import CORSMiddleware
+from starlette.responses import JSONResponse
 
 from database import client
 from db_indexes import ensure_indexes, scan_for_duplicate_ids
@@ -34,6 +35,17 @@ from email_templates import seed_default_templates
 import routes_career
 import routes_career_security
 import routes_analytics
+import routes_platform
+import routes_tenant
+from tenant_context import (
+    TenantScopeError,
+    enter_request,
+    exit_request,
+    reset_tenant_id,
+    set_tenant_id,
+    tenant_scope,
+)
+from tenants import get_tenant_by_slug
 
 app = FastAPI(title='Pinnacle ATS')
 
@@ -60,10 +72,38 @@ api_router.include_router(routes_scheduling.router)
 api_router.include_router(routes_career.router)
 api_router.include_router(routes_career_security.router)
 api_router.include_router(routes_analytics.router)
+api_router.include_router(routes_platform.router)
+api_router.include_router(routes_tenant.router)
 from routes_change_log import router as change_log_router
 api_router.include_router(change_log_router)
 
 app.include_router(api_router)
+
+
+@app.middleware('http')
+async def tenant_context_middleware(request, call_next):
+    """Resolves the tenant for UNAUTHENTICATED requests (public careers pages,
+    login) from the X-Tenant-Slug header or a ?tenant= query param.
+    Authenticated requests are re-scoped from the JWT inside get_current_user,
+    which always wins over the header."""
+    slug = request.headers.get('X-Tenant-Slug') or request.query_params.get('tenant')
+    tenant_id = None
+    if slug:
+        t = await get_tenant_by_slug(slug)
+        tenant_id = t['id'] if t else None
+    token = set_tenant_id(tenant_id)
+    req_token = enter_request()
+    try:
+        return await call_next(request)
+    finally:
+        exit_request(req_token)
+        reset_tenant_id(token)
+
+
+@app.exception_handler(TenantScopeError)
+async def tenant_scope_error_handler(request, exc):
+    logging.getLogger(__name__).warning('Unscoped tenant access blocked on %s: %s', request.url.path, exc)
+    return JSONResponse(status_code=400, content={'detail': str(exc)})
 
 app.add_middleware(
     CORSMiddleware,
@@ -82,7 +122,18 @@ async def startup():
     created = await seed_if_empty()
     if created:
         logger.info('Seeded database (from snapshot or demo data)')
-    inserted = await seed_default_templates()
+    # Multi-tenancy: ensure the founding tenant exists, backfill tenant_id on
+    # every legacy row, and ensure the platform owner account exists. Idempotent.
+    from migrate_tenancy import run_tenancy_migration
+    tenancy = {}
+    try:
+        tenancy = await run_tenancy_migration()
+        logger.info('Tenancy migration: %s', tenancy)
+    except Exception:
+        logger.exception('Tenancy migration failed')
+    # Default email templates belong to a tenant — seed them for the founding one.
+    with tenant_scope(tenancy.get('tenant_id')):
+        inserted = await seed_default_templates()
     if inserted:
         logger.info(f'Seeded {inserted} default email template(s)')
     # RBAC migration — idempotent, promotes seeded admins to super_admin and

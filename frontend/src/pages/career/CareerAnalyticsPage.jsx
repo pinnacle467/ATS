@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { api } from '@/lib/api';
+import { careersPath } from '@/lib/tenant';
 
 const SOURCE_COLORS = ['#1a5c47', '#2f7a5f', '#4c9578', '#6bb094', '#8bcbb0', '#f4b942', '#e8a52e', '#d99418', '#c88803', '#b57900'];
 
@@ -180,7 +181,7 @@ export default function CareerAnalyticsPage() {
                     <TableCell className="text-right font-mono text-sm">{j.conversion}%</TableCell>
                     <TableCell className="w-8">
                       {j.slug && (
-                        <Link to={`/careers/jobs/${j.slug}`} target="_blank" rel="noreferrer">
+                        <Link to={careersPath(`/jobs/${j.slug}`)} target="_blank" rel="noreferrer">
                           <Button variant="ghost" size="icon" title="Open public page"><ArrowUpRight className="h-4 w-4" /></Button>
                         </Link>
                       )}

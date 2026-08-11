@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useCareerSettings } from '@/pages/public/CareerPublicLayout';
 import { api } from '@/lib/api';
+import { careersPath, getTenantSlug } from '@/lib/tenant';
 
 export default function CareerHomePage() {
   const settings = useCareerSettings();
@@ -16,7 +17,7 @@ export default function CareerHomePage() {
   }, []);
 
   const heroImageUrl = settings.hero_image_file_id
-    ? `${backendUrl}/api/career/public/hero`
+    ? `${backendUrl}/api/career/public/hero?tenant=${getTenantSlug() || ''}`
     : null;
   const heroStyle = heroImageUrl
     ? { backgroundImage: `linear-gradient(135deg, ${settings.primary_color}CC, ${(settings.secondary_color || settings.primary_color)}80), url(${heroImageUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }
@@ -33,7 +34,7 @@ export default function CareerHomePage() {
           </h1>
           <p className={`${heroImageUrl ? 'text-white/90' : 'text-muted-foreground'} text-lg mt-4`} data-testid="career-hero-subheadline">{settings.subheadline}</p>
           <div className="mt-8">
-            <Link to="/careers/jobs">
+            <Link to={careersPath('/jobs')}>
               <Button size="lg" data-testid="career-hero-cta" style={{ background: settings.secondary_color || settings.primary_color, color: '#ffffff' }}>
                 View Open Roles <ArrowRight className="h-4 w-4 ml-2" />
               </Button>
@@ -50,7 +51,7 @@ export default function CareerHomePage() {
             {jobs.map((j) => (
               <Link
                 key={j.id}
-                to={`/careers/jobs/${j.slug}`}
+                to={careersPath(`/jobs/${j.slug}`)}
                 className="border border-border rounded-xl p-5 hover:border-primary/50 hover:shadow-sm transition-all bg-card"
                 data-testid={`career-featured-job-${j.id}`}
               >
@@ -93,7 +94,7 @@ export default function CareerHomePage() {
 
       {/* CTA */}
       <section className="px-4 sm:px-6 py-16 text-center">
-        <Link to="/careers/jobs">
+        <Link to={careersPath('/jobs')}>
           <Button size="lg" variant="outline" data-testid="career-bottom-cta">See All Open Roles</Button>
         </Link>
       </section>

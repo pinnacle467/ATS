@@ -15,7 +15,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from auth import get_current_user, require_roles
-from database import db
+from database import db, raw_db
+from tenant_context import set_tenant_id
 from email_templates import render, send_custom
 from permissions import is_admin_or_higher
 from rate_limiter import enforce as rate_limit
@@ -363,9 +364,10 @@ async def send_offer(offer_id: str, user: dict = Depends(require_roles('admin', 
 @router.get('/public/{token}')
 async def public_get_offer(token: str, request: Request):
     rate_limit(request, scope='offer_public', limit=60, window_seconds=60)
-    offer = await db.offers.find_one({'public_token': token}, {'_id': 0})
+    offer = await raw_db.offers.find_one({'public_token': token}, {'_id': 0})
     if not offer or offer['status'] not in ('sent', 'accepted', 'declined'):
         raise HTTPException(status_code=404, detail='This offer link is invalid or no longer available')
+    set_tenant_id(offer.get('tenant_id'))
     candidate = await db.candidates.find_one({'id': offer['candidate_id']}, {'_id': 0}) or {}
     job = await db.jobs.find_one({'id': offer['job_id']}, {'_id': 0}) if offer.get('job_id') else None
     tpl = await _get_template()
@@ -391,9 +393,10 @@ async def public_respond(token: str, body: RespondBody, request: Request):
     rate_limit(request, scope='offer_public_respond', limit=10, window_seconds=60)
     if body.response not in ('accepted', 'declined'):
         raise HTTPException(status_code=422, detail='response must be accepted or declined')
-    offer = await db.offers.find_one({'public_token': token})
+    offer = await raw_db.offers.find_one({'public_token': token})
     if not offer or offer['status'] != 'sent':
         raise HTTPException(status_code=404, detail='This offer has already been responded to or is no longer available')
+    set_tenant_id(offer.get('tenant_id'))
     await db.offers.update_one({'id': offer['id']}, {'$set': {
         'status': body.response, 'response_status': body.response, 'response_comment': body.comment,
         'responded_at': now_iso(), 'updated_at': now_iso(),

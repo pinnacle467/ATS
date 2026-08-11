@@ -21,6 +21,19 @@ from utils import log_activity, new_id, next_candidate_code, notify, now_iso
 
 router = APIRouter(prefix='/career', tags=['career'])
 
+async def _portal_slug() -> str:
+    """URL slug of the tenant this request belongs to (careers URLs are /{slug}/careers)."""
+    from tenant_context import get_tenant_id
+    from tenants import get_tenant
+    t = await get_tenant(get_tenant_id())
+    return (t or {}).get('slug', '')
+
+
+async def _portal_base() -> str:
+    slug = await _portal_slug()
+    return f'{APP_BASE_URL}/{slug}' if slug else APP_BASE_URL
+
+
 APP_BASE_URL = os.environ['APP_BASE_URL']
 MAX_RESUME_SIZE = 10 * 1024 * 1024
 
@@ -121,7 +134,7 @@ def _public_job(job: dict) -> dict:
 @router.get('/settings')
 async def get_settings(user: dict = Depends(require_roles('admin', 'recruiter'))):
     s = await _get_settings()
-    s['portal_url'] = f'{APP_BASE_URL}/careers'
+    s['portal_url'] = f'{await _portal_base()}/careers'
     return s
 
 
@@ -152,7 +165,7 @@ async def update_settings(body: SettingsUpdate, user: dict = Depends(require_rol
     updates['updated_at'] = now_iso()
     await db.career_settings.update_one({'key': 'singleton'}, {'$set': updates}, upsert=True)
     s = await db.career_settings.find_one({'key': 'singleton'}, {'_id': 0})
-    s['portal_url'] = f'{APP_BASE_URL}/careers'
+    s['portal_url'] = f'{await _portal_base()}/careers'
     return s
 
 
@@ -356,7 +369,7 @@ async def career_dashboard(user: dict = Depends(require_roles('admin', 'recruite
         a['job_title'] = jobs.get(a['job_id'], {}).get('title')
     return {
         'portal_enabled': s.get('portal_enabled', False),
-        'portal_url': f'{APP_BASE_URL}/careers',
+        'portal_url': f'{await _portal_base()}/careers',
         'published_jobs': published_jobs,
         'total_applications': total_applications,
         'applications_today': apps_today,
@@ -454,14 +467,14 @@ async def robots_txt():
     s = await _get_settings()
     lines = ['User-agent: *']
     if s.get('portal_enabled'):
-        lines.append('Allow: /careers')
+        lines.append(f'Allow: /{await _portal_slug()}/careers')
         lines.append('Disallow: /login')
         lines.append('Disallow: /candidates')
         lines.append('Disallow: /jobs')
         lines.append('Disallow: /interviews')
         lines.append('Disallow: /admin')
         lines.append('Disallow: /career-portal')
-        lines.append(f'Sitemap: {APP_BASE_URL}/api/career/seo/sitemap.xml')
+        lines.append(f'Sitemap: {APP_BASE_URL}/api/career/seo/sitemap.xml?tenant={await _portal_slug()}')
     else:
         lines.append('Disallow: /')
     return Response(content='\n'.join(lines) + '\n', media_type='text/plain')
@@ -472,18 +485,18 @@ async def sitemap_xml():
     s = await _get_settings()
     urls: list[dict] = []
     if s.get('portal_enabled'):
-        urls.append({'loc': f'{APP_BASE_URL}/careers', 'priority': '1.0', 'changefreq': 'daily'})
-        urls.append({'loc': f'{APP_BASE_URL}/careers/jobs', 'priority': '0.9', 'changefreq': 'daily'})
+        urls.append({'loc': f'{await _portal_base()}/careers', 'priority': '1.0', 'changefreq': 'daily'})
+        urls.append({'loc': f'{await _portal_base()}/careers/jobs', 'priority': '0.9', 'changefreq': 'daily'})
         pages = await db.career_pages.find({'published': True}, {'_id': 0, 'key': 1, 'updated_at': 1}).to_list(20)
         for p in pages:
-            urls.append({'loc': f'{APP_BASE_URL}/careers/{p["key"]}', 'priority': '0.6',
+            urls.append({'loc': f'{await _portal_base()}/careers/{p["key"]}', 'priority': '0.6',
                          'changefreq': 'weekly', 'lastmod': (p.get('updated_at') or '')[:10]})
         jobs = await db.jobs.find({'published': True, 'status': 'open'},
                                   {'_id': 0, 'slug': 1, 'updated_at': 1, 'created_at': 1}).to_list(500)
         for j in jobs:
             if not j.get('slug'):
                 continue
-            urls.append({'loc': f'{APP_BASE_URL}/careers/jobs/{j["slug"]}', 'priority': '0.8',
+            urls.append({'loc': f'{await _portal_base()}/careers/jobs/{j["slug"]}', 'priority': '0.8',
                          'changefreq': 'weekly', 'lastmod': (j.get('updated_at') or j.get('created_at') or '')[:10]})
     body = ['<?xml version="1.0" encoding="UTF-8"?>',
             '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
@@ -527,7 +540,7 @@ async def jobposting_jsonld(slug: str):
             'sameAs': APP_BASE_URL,
         },
         'directApply': True,
-        'url': f'{APP_BASE_URL}/careers/jobs/{slug}',
+        'url': f'{await _portal_base()}/careers/jobs/{slug}',
     }
     if location_str:
         payload['jobLocation'] = {

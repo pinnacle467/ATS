@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { api, errMsg } from '@/lib/api';
+import { getTenantSlug } from '@/lib/tenant';
 
 export default function CareerMediaPage() {
   const [items, setItems] = useState([]);
@@ -75,7 +76,7 @@ export default function CareerMediaPage() {
   };
 
   const copyUrl = (id) => {
-    const url = `${backendUrl}/api/career/public/media/${id}`;
+    const url = `${backendUrl}/api/career/public/media/${id}?tenant=${getTenantSlug() || ''}`;
     navigator.clipboard?.writeText(url);
     setCopied(id);
     setTimeout(() => setCopied(null), 1500);
@@ -150,7 +151,7 @@ export default function CareerMediaPage() {
           {items.map((m) => (
             <Card key={m.id} className="overflow-hidden group shadow-none" data-testid={`career-media-item-${m.id}`}>
               <div className="aspect-square bg-secondary relative">
-                <img src={`${backendUrl}/api/career/public/media/${m.id}`} alt={m.filename} className="h-full w-full object-cover" />
+                <img src={`${backendUrl}/api/career/public/media/${m.id}?tenant=${getTenantSlug() || ''}`} alt={m.filename} className="h-full w-full object-cover" />
                 <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
                   <Button size="icon" variant="secondary" onClick={() => copyUrl(m.id)} title="Copy public URL" data-testid={`career-media-copy-${m.id}`}>
                     {copied === m.id ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}

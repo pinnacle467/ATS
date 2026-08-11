@@ -3,6 +3,7 @@ import logging
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, EmailStr, Field
@@ -10,6 +11,8 @@ from pydantic import BaseModel, EmailStr, Field
 from auth import create_token, get_current_user, hash_password, verify_password
 from database import db
 from email_sender import build_reset_password_email, send_email
+from tenant_context import set_tenant_id
+from tenants import STATUS_SUSPENDED, get_tenant_by_slug, public_tenant
 from utils import log_audit, now_iso
 
 logger = logging.getLogger(__name__)
@@ -43,6 +46,7 @@ def _now_utc() -> datetime:
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+    tenant_slug: Optional[str] = None
 
 
 class ForgotPasswordRequest(BaseModel):
@@ -62,6 +66,16 @@ class ChangePasswordRequest(BaseModel):
 # ---- Endpoints ----------------------------------------------------------
 @router.post('/login')
 async def login(body: LoginRequest, request: Request):
+    slug = (body.tenant_slug or request.headers.get('X-Tenant-Slug') or '').strip().lower()
+    if not slug:
+        raise HTTPException(status_code=400, detail='Workspace is required. Use your workspace sign-in link.')
+    tenant = await get_tenant_by_slug(slug)
+    if not tenant:
+        raise HTTPException(status_code=404, detail='Workspace not found')
+    if tenant.get('status') == STATUS_SUSPENDED:
+        raise HTTPException(status_code=403, detail='This workspace has been suspended. Contact support.')
+    set_tenant_id(tenant['id'])
+
     user = await db.users.find_one({'email': body.email.lower()})
     if not user or not verify_password(body.password, user.get('password_hash', '')):
         raise HTTPException(status_code=401, detail='Invalid email or password')
@@ -69,9 +83,9 @@ async def login(body: LoginRequest, request: Request):
         raise HTTPException(status_code=403, detail='Account deactivated. Contact your admin.')
     await db.users.update_one({'id': user['id']}, {'$set': {'last_login': now_iso()}})
     await log_audit({'id': user['id'], 'name': user['name']}, 'login', 'user', user['id'], f"{user['email']} logged in")
-    token = create_token(user['id'])
+    token = create_token(user['id'], tenant_id=tenant['id'], kind='user')
     safe = {k: v for k, v in user.items() if k not in ('_id', 'password_hash')}
-    return {'token': token, 'user': safe}
+    return {'token': token, 'user': safe, 'tenant': public_tenant(tenant)}
 
 
 @router.get('/me')
@@ -84,9 +98,16 @@ async def forgot_password(body: ForgotPasswordRequest, request: Request):
     """Generate a password-reset token and email it to the user.
 
     Always returns success to prevent user enumeration. Rate-limited per email.
+    Requires a workspace (X-Tenant-Slug) since emails are unique per tenant.
     """
     email = body.email.lower().strip()
     generic_ok = {'ok': True, 'message': 'If an account exists for that email, a reset link has been sent.'}
+
+    slug = (request.headers.get('X-Tenant-Slug') or '').strip().lower()
+    tenant = await get_tenant_by_slug(slug) if slug else None
+    if not tenant:
+        raise HTTPException(status_code=400, detail='Workspace is required. Open your workspace sign-in page first.')
+    set_tenant_id(tenant['id'])
 
     # Rate limit: max N attempts per email per hour
     since = _now_utc() - timedelta(hours=1)
@@ -114,6 +135,7 @@ async def forgot_password(body: ForgotPasswordRequest, request: Request):
     reset_doc = {
         'id': secrets.token_hex(12),
         'user_id': user['id'],
+        'tenant_id': tenant['id'],
         'email': email,
         'token_hash': token_hash,
         'created_at': now_dt.isoformat(),
@@ -176,6 +198,8 @@ async def reset_password(body: ResetPasswordRequest):
     if exp < _now_utc():
         raise HTTPException(status_code=400, detail='This reset link has expired. Please request a new one.')
 
+    # The reset link carries no workspace, so scope the request from the record.
+    set_tenant_id(rec.get('tenant_id'))
     user = await db.users.find_one({'id': rec['user_id']})
     if not user or not user.get('active', True):
         raise HTTPException(status_code=400, detail='Account is not available')
@@ -220,6 +244,7 @@ async def verify_reset_token(token: str):
         raise HTTPException(status_code=400, detail='Invalid reset link')
     if exp < _now_utc():
         raise HTTPException(status_code=400, detail='This reset link has expired. Please request a new one.')
+    set_tenant_id(rec.get('tenant_id'))
     user = await db.users.find_one({'id': rec['user_id']}, {'_id': 0, 'email': 1, 'name': 1})
     return {'ok': True, 'email': user.get('email') if user else '', 'name': user.get('name') if user else ''}
 

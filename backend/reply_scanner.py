@@ -173,6 +173,7 @@ async def _scan_once():
     from google_calendar import get_credentials_for_user
     from gmail_reader import search_replies_from
     from reply_parser import parse_candidate_reply
+    from tenant_context import set_tenant_id
     from utils import log_activity, log_audit, now_iso
 
     cutoff = (datetime.now(timezone.utc) - timedelta(days=REPLY_LOOKBACK_DAYS)).isoformat()
@@ -195,6 +196,7 @@ async def _scan_once():
     processed_reply_ids: set[str] = set()
 
     for row in rows:
+        set_tenant_id(row.get('tenant_id'))
         sender_id = row.get('sender_user_id')
         to_email = (row.get('to_email') or '').strip().lower()
         if not sender_id or not to_email:

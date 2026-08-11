@@ -25,6 +25,7 @@ from datetime import datetime, timezone
 from database import db
 from scheduling_emails import human_time, queue_scheduling_email
 from scheduling_engine import get_scheduling_settings
+from tenant_context import set_tenant_id
 from utils import log_activity, log_audit, notify
 
 logger = logging.getLogger(__name__)
@@ -77,6 +78,7 @@ async def _check_once():
     }, {'_id': 0}).to_list(1000)
 
     for iv in ivs:
+        set_tenant_id(iv.get('tenant_id'))
         try:
             start = datetime.fromisoformat(iv['scheduled_at'].replace('Z', '+00:00'))
         except (ValueError, TypeError, KeyError):

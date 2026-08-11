@@ -33,6 +33,12 @@ import CareerJobDetailPage from '@/pages/public/CareerJobDetailPage';
 import CareerStaticPage from '@/pages/public/CareerStaticPage';
 import SchedulePage from '@/pages/public/SchedulePage';
 import SchedulingDashboardPage from '@/pages/SchedulingDashboardPage';
+import WorkspacePickerPage from '@/pages/WorkspacePickerPage';
+import WorkspaceSettingsPage from '@/pages/WorkspaceSettingsPage';
+import PlatformLoginPage from '@/pages/platform/PlatformLoginPage';
+import PlatformDashboardPage from '@/pages/platform/PlatformDashboardPage';
+import TenantGate from '@/components/TenantGate';
+import { getTenantSlug, loginPath } from '@/lib/tenant';
 
 // Role hierarchy alias map — mirrors backend/permissions.py ROLE_ALIASES so
 // super_admin passes any 'admin'/'recruiter' check, and interview_panel passes
@@ -59,9 +65,17 @@ const Protected = ({ children, roles }) => {
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
       </div>
     );
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) return <Navigate to={loginPath(getTenantSlug())} replace />;
   if (roles && !roleSatisfies(user.role, roles)) return <Navigate to="/" replace />;
   return <AppShell>{children}</AppShell>;
+};
+
+// Legacy single-tenant careers URLs (/careers...) now need a workspace slug.
+// Reuses the slug already stored in this browser, else sends them to the picker.
+const LegacyCareersRedirect = () => {
+  const slug = getTenantSlug();
+  const rest = window.location.pathname.replace(/^\/careers/, '');
+  return <Navigate to={slug ? `/${slug}/careers${rest}` : '/login'} replace />;
 };
 
 function App() {
@@ -69,7 +83,9 @@ function App() {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          <Route path="/login" element={<LoginPage />} />
+          <Route path="/login" element={<WorkspacePickerPage />} />
+          <Route path="/platform/login" element={<PlatformLoginPage />} />
+          <Route path="/platform" element={<PlatformDashboardPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/" element={<Protected><DashboardPage /></Protected>} />
@@ -86,6 +102,7 @@ function App() {
           <Route path="/admin" element={<Protected roles={['admin']}><AdminPage /></Protected>} />
           <Route path="/my-integrations" element={<Protected><MyIntegrationsPage /></Protected>} />
           <Route path="/account" element={<Protected><AccountPage /></Protected>} />
+          <Route path="/workspace" element={<Protected roles={['admin']}><WorkspaceSettingsPage /></Protected>} />
           <Route path="/career-portal" element={<Protected roles={['admin', 'recruiter']}><CareerDashboardPage /></Protected>} />
           <Route path="/career-portal/jobs" element={<Protected roles={['admin', 'recruiter']}><CareerJobsPage /></Protected>} />
           <Route path="/career-portal/settings" element={<Protected roles={['admin', 'recruiter']}><CareerSettingsPage /></Protected>} />
@@ -93,10 +110,13 @@ function App() {
           <Route path="/career-portal/content" element={<Protected roles={['admin', 'recruiter']}><CareerContentPage /></Protected>} />
           <Route path="/career-portal/media" element={<Protected roles={['admin', 'recruiter']}><CareerMediaPage /></Protected>} />
           <Route path="/career-portal/analytics" element={<Protected roles={['admin', 'recruiter']}><CareerAnalyticsPage /></Protected>} />
-          <Route path="/careers" element={<CareerPublicLayout><CareerHomePage /></CareerPublicLayout>} />
-          <Route path="/careers/jobs" element={<CareerPublicLayout><CareerJobsListPage /></CareerPublicLayout>} />
-          <Route path="/careers/jobs/:slug" element={<CareerPublicLayout><CareerJobDetailPage /></CareerPublicLayout>} />
-          <Route path="/careers/:key" element={<CareerPublicLayout><CareerStaticPage /></CareerPublicLayout>} />
+          <Route path="/careers" element={<LegacyCareersRedirect />} />
+          <Route path="/careers/*" element={<LegacyCareersRedirect />} />
+          <Route path="/:slug/login" element={<TenantGate><LoginPage /></TenantGate>} />
+          <Route path="/:slug/careers" element={<TenantGate><CareerPublicLayout><CareerHomePage /></CareerPublicLayout></TenantGate>} />
+          <Route path="/:slug/careers/jobs" element={<TenantGate><CareerPublicLayout><CareerJobsListPage /></CareerPublicLayout></TenantGate>} />
+          <Route path="/:slug/careers/jobs/:jobSlug" element={<TenantGate><CareerPublicLayout><CareerJobDetailPage /></CareerPublicLayout></TenantGate>} />
+          <Route path="/:slug/careers/:key" element={<TenantGate><CareerPublicLayout><CareerStaticPage /></CareerPublicLayout></TenantGate>} />
           <Route path="/schedule/interview/:token" element={<SchedulePage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

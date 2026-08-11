@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { track } from './tracking';
+import { careersPath, getTenantSlug } from '@/lib/tenant';
 
 const CareerSettingsContext = createContext(null);
 export const useCareerSettings = () => useContext(CareerSettingsContext);
@@ -113,11 +114,11 @@ export default function CareerPublicLayout({ children }) {
     setMeta('og:description', desc, true);
     setMeta('og:type', 'website', true);
     setMeta('og:url', window.location.href, true);
-    setMeta('og:image', `${backendUrl}/api/career/public/og-image`, true);
+    setMeta('og:image', `${backendUrl}/api/career/public/og-image?tenant=${getTenantSlug() || ''}`, true);
     setMeta('twitter:card', 'summary_large_image');
     setMeta('twitter:title', title);
     setMeta('twitter:description', desc);
-    setMeta('twitter:image', `${backendUrl}/api/career/public/og-image`);
+    setMeta('twitter:image', `${backendUrl}/api/career/public/og-image?tenant=${getTenantSlug() || ''}`);
   }, [settings, backendUrl]);
 
   if (loading) {
@@ -157,9 +158,9 @@ export default function CareerPublicLayout({ children }) {
       <div className="min-h-screen flex flex-col bg-background career-portal-root" style={rootStyle}>
         <header className="border-b border-border sticky top-0 z-20 bg-card/95 backdrop-blur">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-            <Link to="/careers" className="flex items-center gap-2" data-testid="career-public-logo">
+            <Link to={careersPath()} className="flex items-center gap-2" data-testid="career-public-logo">
               {settings.logo_file_id ? (
-                <img src={`${backendUrl}/api/career/public/logo`} alt={settings.company_name} className="h-9 w-9 rounded-lg object-cover" />
+                <img src={`${backendUrl}/api/career/public/logo?tenant=${getTenantSlug() || ''}`} alt={settings.company_name} className="h-9 w-9 rounded-lg object-cover" />
               ) : (
                 <span
                   className="h-9 w-9 rounded-lg flex items-center justify-center font-display font-bold text-white"
@@ -171,12 +172,12 @@ export default function CareerPublicLayout({ children }) {
               <span className="font-display font-semibold text-lg" style={headingFontStyle}>{settings.company_name}</span>
             </Link>
             <nav className="flex items-center gap-5 text-sm font-medium">
-              <Link to="/careers" data-testid="career-nav-home" className="hover:text-primary transition-colors">Home</Link>
-              <Link to="/careers/jobs" data-testid="career-nav-jobs" className="hover:text-primary transition-colors">Open Roles</Link>
+              <Link to={careersPath()} data-testid="career-nav-home" className="hover:text-primary transition-colors">Home</Link>
+              <Link to={careersPath('/jobs')} data-testid="career-nav-jobs" className="hover:text-primary transition-colors">Open Roles</Link>
               {visibleNav.map((p) => (
                 <Link
                   key={p.key}
-                  to={`/careers/${p.key}`}
+                  to={careersPath(`/${p.key}`)}
                   className="hover:text-primary transition-colors hidden md:inline"
                   data-testid={`career-nav-${p.key}`}
                 >

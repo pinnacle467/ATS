@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { api } from '@/lib/api';
 import { useCareerSettings } from './CareerPublicLayout';
+import { careersPath, getTenantSlug } from '@/lib/tenant';
 
 // Renders one of the 4 published static pages (About, Benefits, Life, Testimonials).
 // Route params drive the `key`. Uses the shared CareerPublicLayout for header/footer.
@@ -38,14 +39,14 @@ export default function CareerStaticPage() {
     setMeta('og:description', desc, true);
     setMeta('og:type', 'website', true);
     setMeta('og:url', window.location.href, true);
-    setMeta('og:image', `${backendUrl}/api/career/public/og-image`, true);
+    setMeta('og:image', `${backendUrl}/api/career/public/og-image?tenant=${getTenantSlug() || ''}`, true);
   }, [page, settings, backendUrl]);
 
   if (loading) {
     return <div className="min-h-[50vh] flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
   }
   if (notFound || !page) {
-    return <Navigate to="/careers" replace />;
+    return <Navigate to={careersPath()} replace />;
   }
 
   const brandGradient = `linear-gradient(135deg, ${settings.primary_color}CC, ${settings.secondary_color || settings.primary_color}CC)`;
@@ -55,7 +56,7 @@ export default function CareerStaticPage() {
       <section className="relative overflow-hidden" style={{ background: brandGradient }}>
         {page.hero_image_file_id && (
           <img
-            src={`${backendUrl}/api/career/public/pages/${key}/hero`}
+            src={`${backendUrl}/api/career/public/pages/${key}/hero?tenant=${getTenantSlug() || ''}`}
             alt=""
             className="absolute inset-0 h-full w-full object-cover opacity-40"
           />

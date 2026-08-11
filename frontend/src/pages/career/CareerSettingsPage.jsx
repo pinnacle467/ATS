@@ -10,6 +10,7 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { api, errMsg } from '@/lib/api';
+import { getTenantSlug } from '@/lib/tenant';
 
 export default function CareerSettingsPage() {
   const [settings, setSettings] = useState(null);
@@ -110,7 +111,7 @@ export default function CareerSettingsPage() {
           <div className="flex items-center gap-4">
             <div className="h-16 w-16 rounded-xl border border-border flex items-center justify-center overflow-hidden bg-secondary shrink-0">
               {settings.logo_file_id ? (
-                <img key={`logo-${assetVersion}`} src={`${backendUrl}/api/career/public/logo?v=${assetVersion}`} alt="Logo" className="h-full w-full object-cover" />
+                <img key={`logo-${assetVersion}`} src={`${backendUrl}/api/career/public/logo?v=${assetVersion}&tenant=${getTenantSlug() || ''}`} alt="Logo" className="h-full w-full object-cover" />
               ) : (
                 <span className="text-xs text-muted-foreground">No logo</span>
               )}
@@ -151,7 +152,7 @@ export default function CareerSettingsPage() {
         <CardContent className="space-y-4">
           <div className="rounded-xl border border-border overflow-hidden bg-secondary aspect-[16/6] max-w-2xl">
             {settings.hero_image_file_id ? (
-              <img key={`hero-${assetVersion}`} src={`${backendUrl}/api/career/public/hero?v=${assetVersion}`} alt="Hero" className="h-full w-full object-cover" data-testid="career-hero-preview" />
+              <img key={`hero-${assetVersion}`} src={`${backendUrl}/api/career/public/hero?v=${assetVersion}&tenant=${getTenantSlug() || ''}`} alt="Hero" className="h-full w-full object-cover" data-testid="career-hero-preview" />
             ) : (
               <div className="h-full w-full flex items-center justify-center text-xs text-muted-foreground"><ImagePlus className="h-6 w-6 mr-2 opacity-40" /> No hero image yet</div>
             )}
@@ -243,7 +244,7 @@ export default function CareerSettingsPage() {
           <div className="flex items-center gap-4">
             <div className="h-16 w-32 rounded border border-border overflow-hidden bg-secondary shrink-0">
               {settings.og_image_file_id ? (
-                <img key={`og-${assetVersion}`} src={`${backendUrl}/api/career/public/og-image?v=${assetVersion}`} alt="OG" className="h-full w-full object-cover" />
+                <img key={`og-${assetVersion}`} src={`${backendUrl}/api/career/public/og-image?v=${assetVersion}&tenant=${getTenantSlug() || ''}`} alt="OG" className="h-full w-full object-cover" />
               ) : (
                 <span className="text-xs text-muted-foreground flex h-full items-center justify-center">No OG image</span>
               )}
@@ -269,9 +270,9 @@ export default function CareerSettingsPage() {
           </div>
           <div className="pt-2 border-t border-border">
             <p className="text-xs text-muted-foreground">
-              robots.txt: <a href={`${backendUrl}/api/career/seo/robots.txt`} target="_blank" rel="noreferrer" className="underline">view</a>
+              robots.txt: <a href={`${backendUrl}/api/career/seo/robots.txt?tenant=${getTenantSlug() || ''}`} target="_blank" rel="noreferrer" className="underline">view</a>
               {' · '}
-              sitemap.xml: <a href={`${backendUrl}/api/career/seo/sitemap.xml`} target="_blank" rel="noreferrer" className="underline">view</a>
+              sitemap.xml: <a href={`${backendUrl}/api/career/seo/sitemap.xml?tenant=${getTenantSlug() || ''}`} target="_blank" rel="noreferrer" className="underline">view</a>
             </p>
           </div>
         </CardContent>
