@@ -3,6 +3,7 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import {
   Building2,
   Copy,
+  KeyRound,
   LogIn,
   LogOut,
   PauseCircle,
@@ -43,6 +44,8 @@ export default function PlatformDashboardPage() {
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [pwOpen, setPwOpen] = useState(false);
+  const [pw, setPw] = useState({ current_password: '', new_password: '', confirm: '' });
 
   const admin = (() => {
     try {
@@ -122,6 +125,27 @@ export default function PlatformDashboardPage() {
     }
   };
 
+  const changePassword = async () => {
+    if (pw.new_password !== pw.confirm) {
+      toast.error('New passwords do not match');
+      return;
+    }
+    setBusy(true);
+    try {
+      await platformApi.post('/platform/change-password', {
+        current_password: pw.current_password,
+        new_password: pw.new_password,
+      });
+      toast.success('Password updated');
+      setPwOpen(false);
+      setPw({ current_password: '', new_password: '', confirm: '' });
+    } catch (e) {
+      toast.error(errMsg(e, 'Could not update password'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const signOut = () => {
     localStorage.removeItem('ats_platform_token');
     localStorage.removeItem('ats_platform_admin');
@@ -150,6 +174,15 @@ export default function PlatformDashboardPage() {
               className="bg-teal-500 hover:bg-teal-400 text-slate-950 font-semibold"
             >
               <Plus className="h-4 w-4 mr-1" /> New workspace
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => setPwOpen(true)}
+              data-testid="change-password-button"
+              className="text-slate-300 hover:text-white hover:bg-slate-800"
+              title="Change password"
+            >
+              <KeyRound className="h-4 w-4" />
             </Button>
             <Button variant="ghost" onClick={signOut} data-testid="platform-logout-button" className="text-slate-300 hover:text-white hover:bg-slate-800">
               <LogOut className="h-4 w-4" />
@@ -347,6 +380,44 @@ export default function PlatformDashboardPage() {
               toast.success('Link copied');
             }}>
               <Copy className="h-4 w-4 mr-1" /> Copy sign-in link
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Change owner password */}
+      <Dialog open={pwOpen} onOpenChange={setPwOpen}>
+        <DialogContent className="sm:max-w-md" data-testid="change-password-dialog">
+          <DialogHeader>
+            <DialogTitle>Change owner password</DialogTitle>
+            <DialogDescription>
+              Applies to {admin.email}. Once you set it here, it is yours — server config will never overwrite it again.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="cur">Current password</Label>
+              <Input id="cur" type="password" data-testid="current-password-input" value={pw.current_password}
+                onChange={(e) => setPw({ ...pw, current_password: e.target.value })} placeholder="••••••••" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="np">New password</Label>
+              <Input id="np" type="password" data-testid="new-password-input" value={pw.new_password}
+                onChange={(e) => setPw({ ...pw, new_password: e.target.value })} placeholder="At least 8 characters" />
+              <p className="text-xs text-muted-foreground">
+                Needs 8+ characters with upper and lower case letters and a number.
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="cp">Confirm new password</Label>
+              <Input id="cp" type="password" data-testid="confirm-password-input" value={pw.confirm}
+                onChange={(e) => setPw({ ...pw, confirm: e.target.value })} placeholder="Repeat it" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPwOpen(false)}>Cancel</Button>
+            <Button onClick={changePassword} disabled={busy} data-testid="change-password-submit">
+              {busy ? 'Saving…' : 'Update password'}
             </Button>
           </DialogFooter>
         </DialogContent>

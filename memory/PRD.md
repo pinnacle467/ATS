@@ -200,3 +200,16 @@ tenant-scoped auth, and per-tenant white-labeling.
 - P2: invite-by-email flow for new workspace users (today the platform owner sets a temp password).
 - P2: custom domain per tenant (career portal `custom_domain` field exists but is single-tenant logic).
 - P2: platform-level audit trail of impersonation/suspension events in a dedicated collection.
+
+### Added: platform owner self-service password change (June 2026)
+- `POST /api/platform/change-password` (platform token) — verifies the current password, enforces the
+  same strength rules as tenant users (8+, upper+lower, digit), and sets `self_managed: True` on the
+  `platform_admins` doc.
+- `migrate_tenancy.ensure_platform_owner()` now SKIPS password reconciliation when `self_managed` is
+  set, so a UI-set password survives reboots and .env is only the bootstrap/rescue path (deleting the
+  flag or the doc lets .env take over again).
+- UI: key icon in the control-panel header opens the "Change owner password" dialog
+  (`change-password-button`, `change-password-dialog`, `current-password-input`, `new-password-input`,
+  `confirm-password-input`, `change-password-submit`).
+- Verified by API: wrong current password → 400, weak password → 400, successful change + login with
+  the new password, and a backend restart did NOT overwrite the self-managed password.

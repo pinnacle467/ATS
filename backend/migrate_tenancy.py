@@ -50,6 +50,8 @@ async def ensure_platform_owner() -> bool:
     email = PLATFORM_OWNER_EMAIL.lower().strip()
     existing = await raw_db.platform_admins.find_one({'email': email})
     if existing:
+        if existing.get('self_managed'):
+            return False  # owner changed their password in the control panel — leave it alone
         if not verify_password(PLATFORM_OWNER_PASSWORD, existing.get('password_hash', '')):
             await raw_db.platform_admins.update_one(
                 {'id': existing['id']},
@@ -61,14 +63,11 @@ async def ensure_platform_owner() -> bool:
     # Email changed in .env — rotate the one existing owner instead of creating a second.
     if await raw_db.platform_admins.count_documents({}) == 1:
         current = await raw_db.platform_admins.find_one({})
-        await raw_db.platform_admins.update_one(
-            {'id': current['id']},
-            {'$set': {
-                'email': email,
-                'password_hash': hash_password(PLATFORM_OWNER_PASSWORD),
-                'password_updated_at': now_iso(),
-            }},
-        )
+        updates = {'email': email}
+        if not current.get('self_managed'):
+            updates['password_hash'] = hash_password(PLATFORM_OWNER_PASSWORD)
+            updates['password_updated_at'] = now_iso()
+        await raw_db.platform_admins.update_one({'id': current['id']}, {'$set': updates})
         logger.info('Rotated platform owner identity %s -> %s', current.get('email'), email)
         return False
 

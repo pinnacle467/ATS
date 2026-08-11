@@ -9,7 +9,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr, Field
 
-from auth import create_token, get_platform_admin, verify_password
+from auth import create_token, get_platform_admin, hash_password, verify_password
 from database import raw_db
 from tenant_context import GLOBAL_COLLECTIONS
 from tenant_provision import provision_tenant_defaults
@@ -51,6 +51,11 @@ class TenantUpdate(BaseModel):
     plan: Optional[str] = None
 
 
+class OwnerPasswordChange(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=8)
+
+
 @router.post('/login')
 async def platform_login(body: PlatformLogin):
     admin = await raw_db.platform_admins.find_one({'email': body.email.lower()})
@@ -67,6 +72,31 @@ async def platform_login(body: PlatformLogin):
 @router.get('/me')
 async def platform_me(admin: dict = Depends(get_platform_admin)):
     return admin
+
+
+@router.post('/change-password')
+async def change_owner_password(body: OwnerPasswordChange, admin: dict = Depends(get_platform_admin)):
+    """Lets the platform owner rotate their own password from the control panel.
+    Marks the account self-managed so the .env-based startup reconciler stops
+    overwriting it on the next boot."""
+    from routes_auth import _validate_password_strength
+
+    current = await raw_db.platform_admins.find_one({'id': admin['id']})
+    if not current or not verify_password(body.current_password, current.get('password_hash', '')):
+        raise HTTPException(status_code=400, detail='Current password is incorrect')
+    if body.current_password == body.new_password:
+        raise HTTPException(status_code=400, detail='New password must be different from the current one')
+    _validate_password_strength(body.new_password)
+    await raw_db.platform_admins.update_one(
+        {'id': admin['id']},
+        {'$set': {
+            'password_hash': hash_password(body.new_password),
+            'password_updated_at': now_iso(),
+            'self_managed': True,
+        }},
+    )
+    logger.warning('Platform owner %s changed their own password', current['email'])
+    return {'ok': True, 'message': 'Password updated. Use it the next time you sign in.'}
 
 
 async def _tenant_row(t: dict) -> dict:
