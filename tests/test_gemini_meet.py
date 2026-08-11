@@ -17,7 +17,7 @@ import sys
 import requests
 
 # Backend URL from frontend/.env
-BACKEND_URL = "https://ats-full-build.preview.emergentagent.com/api"
+BACKEND_URL = "https://candidate-sync-4.preview.emergentagent.com/api"
 
 # Test credentials from /app/memory/test_credentials.md
 ADMIN_EMAIL = "admin@ats.com"
