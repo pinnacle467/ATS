@@ -7,7 +7,7 @@
 import logging
 import os
 
-from auth import hash_password
+from auth import hash_password, verify_password
 from database import raw_db
 from tenant_context import GLOBAL_COLLECTIONS
 from tenants import FOUNDING_NAME, FOUNDING_SLUG, create_tenant_doc, get_tenant_by_slug
@@ -45,20 +45,44 @@ async def backfill_tenant_ids(tenant_id: str) -> dict:
 
 
 async def ensure_platform_owner() -> bool:
-    existing = await raw_db.platform_admins.find_one({'email': PLATFORM_OWNER_EMAIL.lower()})
+    """Idempotent + reconciling: creates the platform owner, and if the .env
+    email/password changed, rotates the existing single owner in place."""
+    email = PLATFORM_OWNER_EMAIL.lower().strip()
+    existing = await raw_db.platform_admins.find_one({'email': email})
     if existing:
+        if not verify_password(PLATFORM_OWNER_PASSWORD, existing.get('password_hash', '')):
+            await raw_db.platform_admins.update_one(
+                {'id': existing['id']},
+                {'$set': {'password_hash': hash_password(PLATFORM_OWNER_PASSWORD), 'password_updated_at': now_iso()}},
+            )
+            logger.info('Rotated platform owner password for %s', email)
         return False
+
+    # Email changed in .env — rotate the one existing owner instead of creating a second.
+    if await raw_db.platform_admins.count_documents({}) == 1:
+        current = await raw_db.platform_admins.find_one({})
+        await raw_db.platform_admins.update_one(
+            {'id': current['id']},
+            {'$set': {
+                'email': email,
+                'password_hash': hash_password(PLATFORM_OWNER_PASSWORD),
+                'password_updated_at': now_iso(),
+            }},
+        )
+        logger.info('Rotated platform owner identity %s -> %s', current.get('email'), email)
+        return False
+
     await raw_db.platform_admins.insert_one({
         'id': new_id(),
         'name': PLATFORM_OWNER_NAME,
-        'email': PLATFORM_OWNER_EMAIL.lower(),
+        'email': email,
         'password_hash': hash_password(PLATFORM_OWNER_PASSWORD),
         'role': 'platform_owner',
         'active': True,
         'last_login': None,
         'created_at': now_iso(),
     })
-    logger.info('Created platform owner %s', PLATFORM_OWNER_EMAIL)
+    logger.info('Created platform owner %s', email)
     return True
 
 
