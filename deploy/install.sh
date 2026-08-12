@@ -141,12 +141,21 @@ RESEND_API_KEY_VAL="${RESEND_API_KEY_VAL:-$(_read_env RESEND_API_KEY "$ENV_FILE"
 # Keep JWT secret if one already exists (rotating it logs everyone out)
 _EXISTING_JWT="$(_read_env JWT_SECRET "$ENV_FILE")"
 [[ -n "$_EXISTING_JWT" ]] && JWT_SECRET_VAL="$_EXISTING_JWT"
+# Keep the credentials encryption key if one already exists (rotating it makes
+# previously-stored job board integration credentials undecryptable)
+_EXISTING_CRED_KEY="$(_read_env CREDENTIALS_ENCRYPTION_KEY "$ENV_FILE")"
+CREDENTIALS_ENCRYPTION_KEY_VAL="${_EXISTING_CRED_KEY:-}"
+
+# Fernet key = urlsafe-base64 of 32 random bytes — generated with stdlib only,
+# no dependency on the `cryptography` package which isn't installed yet at this point
+[[ -n "$CREDENTIALS_ENCRYPTION_KEY_VAL" ]] || CREDENTIALS_ENCRYPTION_KEY_VAL="$(python3 -c "import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).decode())")"
 
 cat > "$ENV_FILE" <<EOF
 MONGO_URL=mongodb://localhost:27017
 DB_NAME=${DB_NAME_VAR}
 CORS_ORIGINS=*
 JWT_SECRET=${JWT_SECRET_VAL}
+CREDENTIALS_ENCRYPTION_KEY=${CREDENTIALS_ENCRYPTION_KEY_VAL}
 APP_BASE_URL=${PUBLIC_URL}
 EMERGENT_LLM_KEY=${EMERGENT_LLM_KEY_VAL}
 XAI_API_KEY=${XAI_API_KEY_VAL}

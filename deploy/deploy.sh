@@ -51,6 +51,17 @@ log "At commit $CURRENT_SHA"
 # 4. Repair ownership
 chown -R "$APP_USER:$APP_USER" "$APP_DIR"
 
+# 4b. Self-heal required backend/.env keys that may not exist yet on this VPS
+#     (e.g. CREDENTIALS_ENCRYPTION_KEY, added when Job Board integrations shipped).
+#     Never overwrites an existing value — only appends if the key is fully absent.
+ENV_FILE="$APP_DIR/backend/.env"
+if [[ -f "$ENV_FILE" ]] && ! grep -q '^CREDENTIALS_ENCRYPTION_KEY=' "$ENV_FILE"; then
+  warn "CREDENTIALS_ENCRYPTION_KEY missing from backend/.env — generating one now (required since Job Board integrations)"
+  NEW_CRED_KEY="$(python3 -c "import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).decode())")"
+  echo "CREDENTIALS_ENCRYPTION_KEY=${NEW_CRED_KEY}" >> "$ENV_FILE"
+  chown "$APP_USER:$APP_USER" "$ENV_FILE"
+fi
+
 # 5. Backend deps — 3-step install to work around litellm/emergentintegrations pip resolver conflict
 log "Refreshing Python backend deps…"
 PYBIN="$(command -v python3.11 || command -v python3.12 || command -v python3)"
