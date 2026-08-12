@@ -29,11 +29,25 @@ load_dotenv(str(Path(__file__).resolve().parent.parent / 'backend' / '.env'))
 from pymongo import MongoClient  # noqa: E402
 
 SNAPSHOT_PATH = Path(__file__).resolve().parent.parent / 'backend' / 'data_seed' / 'snapshot.json'
+# Every collection the app writes to and cares about persisting across a
+# fresh import / VPS restore. Keep this in sync with the collections actually
+# used in backend/*.py (grep `db\.` / `db\['...'\]`) — a collection missing
+# here is silently dropped from every future snapshot.
+# NOTE: `password_resets` is intentionally excluded (short-lived security
+# tokens; restoring stale ones has no value and is a minor security smell).
 COLLECTIONS = [
+    # Multi-tenancy / platform
+    'tenants', 'platform_admins', 'tenant_ai_settings',
+    # Core ATS
     'users', 'jobs', 'candidates', 'interviews', 'notes', 'activities',
     'scorecards', 'departments', 'tags', 'interview_kits', 'availability',
     'audit_log', 'files', 'counters', 'career_settings', 'applications',
-    'notifications', 'import_sessions',
+    'notifications', 'import_sessions', 'settings',
+    # Offers
+    'offers',
+    # Careers site / comms / misc
+    'career_pages', 'email_log', 'email_templates', 'media_library',
+    'analytics_events',
 ]
 
 
@@ -47,10 +61,6 @@ def dump_snapshot() -> dict:
     for name in COLLECTIONS:
         docs = list(db[name].find({}, {'_id': 0}))
         snap[name] = docs
-    # The seed uses a special settings key for pipeline stages
-    pipeline_setting = db.settings.find_one({'key': 'pipeline_stages'}, {'_id': 0})
-    if pipeline_setting:
-        snap['pipeline'] = {'stages': pipeline_setting.get('stages', [])}
     counts = {k: len(v) for k, v in snap.items() if isinstance(v, list)}
 
     SNAPSHOT_PATH.parent.mkdir(parents=True, exist_ok=True)

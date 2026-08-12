@@ -23,16 +23,21 @@ async def _restore_snapshot() -> bool:
         return False
     with open(SNAPSHOT_PATH) as f:
         snap = json.load(f)
-    collections = ['users', 'jobs', 'candidates', 'interviews', 'notes', 'activities',
-                   'scorecards', 'departments', 'tags', 'interview_kits', 'availability', 'audit_log', 'files', 'counters',
-                   'career_settings', 'applications']
+    # Keep in sync with scripts/dump_snapshot.py COLLECTIONS — a collection
+    # missing here means it silently stays empty on a fresh import.
+    collections = [
+        'tenants', 'platform_admins', 'tenant_ai_settings',
+        'users', 'jobs', 'candidates', 'interviews', 'notes', 'activities',
+        'scorecards', 'departments', 'tags', 'interview_kits', 'availability',
+        'audit_log', 'files', 'counters', 'career_settings', 'applications',
+        'notifications', 'import_sessions', 'settings',
+        'offers', 'career_pages', 'email_log', 'email_templates',
+        'media_library', 'analytics_events',
+    ]
     for name in collections:
         docs = snap.get(name) or []
         if docs:
             await db[name].insert_many([dict(d) for d in docs])
-    pipeline = snap.get('pipeline')
-    if pipeline:
-        await db.settings.update_one({'key': 'pipeline_stages'}, {'$set': {'stages': pipeline['stages']}}, upsert=True)
     await db.candidates.create_index('job_id')
     await db.candidates.create_index('stage')
     await db.candidates.create_index('email')
