@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 load_dotenv('/app/backend/.env')
 
 # Backend URL from frontend .env
-BACKEND_URL = "https://candidate-sync-4.preview.emergentagent.com/api"
+BACKEND_URL = "https://recruit-full-load.preview.emergentagent.com/api"
 ADMIN_EMAIL = "admin@ats.com"
 ADMIN_PASSWORD = "Admin@123"
 
