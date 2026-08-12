@@ -7,11 +7,13 @@ has signed off, the offer is "approved" and the recruiter can send a rendered
 offer letter to the candidate via a shareable, no-login link where the
 candidate can Accept or Decline.
 """
+import base64
 import os
 import secrets
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from auth import get_current_user, require_roles
@@ -86,6 +88,30 @@ async def _build_context(offer: dict, candidate: dict, job: Optional[dict]) -> d
     }
 
 
+def _render_letter(offer: dict, tpl: dict, ctx: dict) -> str:
+    """Render the offer letter HTML. A per-offer `letter_body_html` (the
+    recruiter's edited copy) takes precedence over the global template."""
+    body = offer.get('letter_body_html')
+    if body and body.strip():
+        return render(body, ctx)
+    return render(tpl['html_body'], ctx)
+
+
+def _contract_email_block(offer: dict, token: str) -> str:
+    if not offer.get('contract_file_id'):
+        return ''
+    url = f'{APP_BASE_URL}/api/offers/public/{token}/contract'
+    name = offer.get('contract_filename') or 'contract'
+    return (
+        '<div style="margin-top:20px;padding:14px 16px;border:1px solid #e2e8f0;border-radius:8px;'
+        'background:#f8fafc;font-family:Arial,sans-serif;">'
+        '<p style="margin:0 0 6px;font-size:13px;color:#64748b;">Attached document</p>'
+        f'<a href="{url}" style="color:#0f766e;font-weight:600;text-decoration:none;">📎 {name}</a>'
+        '<p style="margin:6px 0 0;font-size:12px;color:#94a3b8;">Also attached to this email.</p>'
+        '</div>'
+    )
+
+
 def _visible_offer_query(user: dict) -> dict:
     if is_admin_or_higher(user):
         return {}
@@ -114,7 +140,29 @@ class OfferCreate(BaseModel):
     reporting_manager: Optional[str] = None
     offer_expiry_date: Optional[str] = None
     custom_notes: Optional[str] = None
+    # Per-offer editable letter body (rich-text HTML). When present it overrides
+    # the global template for preview / send / the candidate-facing page.
+    letter_body_html: Optional[str] = None
+    # Optional standard contract document (stored in db.files).
+    contract_file_id: Optional[str] = None
+    contract_filename: Optional[str] = None
     approvers: list[ApproverIn] = Field(default_factory=list)
+
+
+class OfferUpdate(BaseModel):
+    start_date: Optional[str] = None
+    base_salary: Optional[float] = None
+    salary_currency: Optional[str] = None
+    bonus: Optional[str] = None
+    equity: Optional[str] = None
+    reporting_manager: Optional[str] = None
+    offer_expiry_date: Optional[str] = None
+    custom_notes: Optional[str] = None
+    letter_body_html: Optional[str] = None
+    contract_file_id: Optional[str] = None
+    contract_filename: Optional[str] = None
+    # Explicit flag to remove an attached contract (since None means "unchanged").
+    remove_contract: bool = False
 
 
 @router.post('')
@@ -158,6 +206,9 @@ async def create_offer(body: OfferCreate, user: dict = Depends(require_roles('ad
         'reporting_manager': body.reporting_manager,
         'offer_expiry_date': body.offer_expiry_date,
         'custom_notes': body.custom_notes,
+        'letter_body_html': body.letter_body_html or None,
+        'contract_file_id': body.contract_file_id or None,
+        'contract_filename': body.contract_filename or None,
         'approvers': approvers,
         'current_step': 1,
         'public_token': None,
@@ -175,6 +226,90 @@ async def create_offer(body: OfferCreate, user: dict = Depends(require_roles('ad
                  f"{candidate.get('name')}'s offer needs your approval (step 1 of {len(approvers)})",
                  f"/candidates/{body.candidate_id}")
     return clean(offer)
+
+
+ALLOWED_CONTRACT_EXT = {'.pdf', '.doc', '.docx'}
+MAX_CONTRACT_SIZE = 15 * 1024 * 1024  # 15 MB
+
+
+@router.post('/upload-contract')
+async def upload_contract(file: UploadFile = File(...), user: dict = Depends(require_roles('admin', 'recruiter'))):
+    """Upload a standard contract document (PDF or Word) to attach to an offer."""
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=422, detail='The file is empty')
+    if len(data) > MAX_CONTRACT_SIZE:
+        raise HTTPException(status_code=422, detail='File exceeds the 15MB limit')
+    name = file.filename or 'contract'
+    ext = ('.' + name.rsplit('.', 1)[-1].lower()) if '.' in name else ''
+    if ext not in ALLOWED_CONTRACT_EXT:
+        raise HTTPException(status_code=422, detail='Only PDF and Word documents (.pdf, .doc, .docx) are allowed')
+    fid = new_id()
+    await db.files.insert_one({
+        'id': fid,
+        'filename': name,
+        'content_type': file.content_type or 'application/octet-stream',
+        'size': len(data),
+        'data_b64': base64.b64encode(data).decode(),
+        'uploaded_by': user['id'],
+        'kind': 'offer_contract',
+        'created_at': now_iso(),
+    })
+    return {'file_id': fid, 'filename': name, 'content_type': file.content_type, 'size': len(data)}
+
+
+class DraftPreview(BaseModel):
+    candidate_id: str
+    start_date: Optional[str] = None
+    base_salary: Optional[float] = None
+    salary_currency: str = 'USD'
+    bonus: Optional[str] = None
+    equity: Optional[str] = None
+    reporting_manager: Optional[str] = None
+    offer_expiry_date: Optional[str] = None
+    custom_notes: Optional[str] = None
+
+
+@router.post('/preview-draft')
+async def preview_draft(body: DraftPreview, user: dict = Depends(require_roles('admin', 'recruiter'))):
+    """Render the offer letter from the global template + the draft field values,
+    so the Create Offer dialog can pre-fill an editable copy."""
+    candidate = await db.candidates.find_one({'id': body.candidate_id}, {'_id': 0})
+    if not candidate:
+        raise HTTPException(status_code=404, detail='Candidate not found')
+    job = await db.jobs.find_one({'id': candidate.get('job_id')}, {'_id': 0}) if candidate.get('job_id') else None
+    tpl = await _get_template()
+    pseudo_offer = {**body.model_dump(), 'created_by_name': user.get('name')}
+    ctx = await _build_context(pseudo_offer, candidate, job)
+    return {'subject': render(tpl['subject'], ctx), 'html': render(tpl['html_body'], ctx)}
+
+
+@router.put('/{offer_id}')
+async def update_offer(offer_id: str, body: OfferUpdate, user: dict = Depends(require_roles('admin', 'recruiter'))):
+    """Edit an offer's details, letter body and/or contract — allowed until the
+    offer has been sent to the candidate."""
+    offer = await db.offers.find_one({'id': offer_id}, {'_id': 0})
+    if not offer:
+        raise HTTPException(status_code=404, detail='Offer not found')
+    if not is_admin_or_higher(user) and offer.get('created_by') != user['id']:
+        raise HTTPException(status_code=403, detail='Not authorized to edit this offer')
+    if offer['status'] not in ('pending_approval', 'approved'):
+        raise HTTPException(status_code=422, detail='This offer can no longer be edited (already sent or closed)')
+    updates = {}
+    for f in ('start_date', 'base_salary', 'salary_currency', 'bonus', 'equity',
+              'reporting_manager', 'offer_expiry_date', 'custom_notes',
+              'letter_body_html', 'contract_file_id', 'contract_filename'):
+        val = getattr(body, f)
+        if val is not None:
+            updates[f] = val
+    if body.remove_contract:
+        updates['contract_file_id'] = None
+        updates['contract_filename'] = None
+    if updates:
+        updates['updated_at'] = now_iso()
+        await db.offers.update_one({'id': offer_id}, {'$set': updates})
+        await log_audit(user, 'offer_updated', 'offer', offer_id, f"Edited offer for {offer.get('candidate_name')}")
+    return clean(await db.offers.find_one({'id': offer_id}, {'_id': 0}))
 
 
 @router.get('')
@@ -322,7 +457,7 @@ async def preview_letter(offer_id: str, user: dict = Depends(require_roles('admi
     job = await db.jobs.find_one({'id': offer['job_id']}, {'_id': 0}) if offer.get('job_id') else None
     tpl = await _get_template()
     ctx = await _build_context(offer, candidate, job)
-    return {'subject': render(tpl['subject'], ctx), 'html': render(tpl['html_body'], ctx)}
+    return {'subject': render(tpl['subject'], ctx), 'html': _render_letter(offer, tpl, ctx)}
 
 
 @router.post('/{offer_id}/send')
@@ -340,15 +475,25 @@ async def send_offer(offer_id: str, user: dict = Depends(require_roles('admin', 
     ctx = await _build_context(offer, candidate, job)
     ctx['offer_link'] = link
     subject = render(tpl['subject'], ctx)
-    html = render(tpl['html_body'], ctx) + (
+    html = _render_letter(offer, tpl, ctx) + _contract_email_block(offer, token) + (
         f'<div style="margin-top:24px;text-align:center;">'
         f'<a href="{link}" style="display:inline-block;background:#10b981;color:#fff;text-decoration:none;'
         f'font-weight:600;padding:12px 28px;border-radius:8px;">View &amp; Respond to Offer</a></div>'
     )
+    # Attach the contract document to the email if one was uploaded.
+    attachments = None
+    if offer.get('contract_file_id'):
+        fdoc = await db.files.find_one({'id': offer['contract_file_id']})
+        if fdoc:
+            attachments = [{
+                'filename': offer.get('contract_filename') or fdoc.get('filename') or 'contract',
+                'data': base64.b64decode(fdoc['data_b64']),
+                'content_type': fdoc.get('content_type') or 'application/octet-stream',
+            }]
     email_result = {'sent': False, 'reason': 'no_email_on_candidate'}
     if candidate.get('email'):
         email_result = await send_custom(candidate['email'], subject, html, ctx, sender_user_id=user['id'],
-                                          log_meta={'offer_id': offer_id})
+                                          log_meta={'offer_id': offer_id}, attachments=attachments)
     await db.offers.update_one({'id': offer_id}, {'$set': {
         'status': 'sent', 'public_token': token, 'sent_at': now_iso(), 'sent_by': user['id'],
         'email_sent': bool(email_result.get('sent')), 'response_status': 'pending', 'updated_at': now_iso(),
@@ -372,6 +517,9 @@ async def public_get_offer(token: str, request: Request):
     job = await db.jobs.find_one({'id': offer['job_id']}, {'_id': 0}) if offer.get('job_id') else None
     tpl = await _get_template()
     ctx = await _build_context(offer, candidate, job)
+    contract_url = None
+    if offer.get('contract_file_id'):
+        contract_url = f'{APP_BASE_URL}/api/offers/public/{token}/contract'
     return {
         'candidate_name': offer.get('candidate_name'),
         'job_title': offer.get('job_title'),
@@ -379,8 +527,29 @@ async def public_get_offer(token: str, request: Request):
         'status': offer.get('status'),
         'response_status': offer.get('response_status'),
         'response_comment': offer.get('response_comment'),
-        'letter_html': render(tpl['html_body'], ctx),
+        'letter_html': _render_letter(offer, tpl, ctx),
+        'contract_url': contract_url,
+        'contract_filename': offer.get('contract_filename'),
     }
+
+
+@router.get('/public/{token}/contract')
+async def public_get_contract(token: str, request: Request):
+    """Serve the contract document attached to a sent offer — no auth (candidate-facing)."""
+    rate_limit(request, scope='offer_public', limit=60, window_seconds=60)
+    offer = await raw_db.offers.find_one({'public_token': token}, {'_id': 0})
+    if not offer or offer['status'] not in ('sent', 'accepted', 'declined') or not offer.get('contract_file_id'):
+        raise HTTPException(status_code=404, detail='No document available for this offer')
+    doc = await raw_db.files.find_one({'id': offer['contract_file_id']})
+    if not doc:
+        raise HTTPException(status_code=404, detail='Document not found')
+    data = base64.b64decode(doc['data_b64'])
+    fname = offer.get('contract_filename') or doc.get('filename') or 'contract'
+    return Response(
+        content=data,
+        media_type=doc.get('content_type', 'application/octet-stream'),
+        headers={'Content-Disposition': f'inline; filename="{fname}"'},
+    )
 
 
 class RespondBody(BaseModel):

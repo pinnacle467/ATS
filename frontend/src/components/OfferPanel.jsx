@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { CheckCircle2, Circle, FileSignature, Link as LinkIcon, Loader2, Send, ThumbsDown, ThumbsUp, XCircle } from 'lucide-react';
+import { CheckCircle2, Circle, FileSignature, Link as LinkIcon, Loader2, Paperclip, Pencil, Send, ThumbsDown, ThumbsUp, XCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,6 +20,7 @@ export default function OfferPanel({ candidateId, candidateName, isRecruiter }) 
   const { user } = useAuth();
   const [offers, setOffers] = useState(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [editOffer, setEditOffer] = useState(null);
   const [actingOn, setActingOn] = useState(null);
   const [rejectDialog, setRejectDialog] = useState(null);
   const [rejectComment, setRejectComment] = useState('');
@@ -145,6 +146,21 @@ export default function OfferPanel({ candidateId, candidateName, isRecruiter }) 
                 {o.offer_expiry_date && <div><p className="text-xs text-muted-foreground">Expires</p><p className="font-medium">{o.offer_expiry_date}</p></div>}
               </div>
 
+              {(o.contract_filename || (isRecruiter && ['pending_approval', 'approved'].includes(o.status))) && (
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  {o.contract_filename ? (
+                    <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground" data-testid={`offer-contract-${o.id}`}>
+                      <Paperclip className="h-3.5 w-3.5" /> {o.contract_filename}
+                    </span>
+                  ) : <span />}
+                  {isRecruiter && ['pending_approval', 'approved'].includes(o.status) && (
+                    <Button size="sm" variant="outline" onClick={() => setEditOffer(o)} data-testid={`offer-edit-button-${o.id}`}>
+                      <Pencil className="h-3.5 w-3.5 mr-1.5" /> Edit offer
+                    </Button>
+                  )}
+                </div>
+              )}
+
               <div className="space-y-2">
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Approval Chain</p>
                 {o.approvers.map((a) => (
@@ -222,6 +238,13 @@ export default function OfferPanel({ candidateId, candidateName, isRecruiter }) 
         onOpenChange={setCreateOpen}
         candidateId={candidateId}
         onCreated={() => { setCreateOpen(false); load(); }}
+      />
+
+      <CreateOfferDialog
+        open={!!editOffer}
+        onOpenChange={(o) => !o && setEditOffer(null)}
+        offer={editOffer}
+        onCreated={() => { setEditOffer(null); load(); }}
       />
 
       <Dialog open={!!rejectDialog} onOpenChange={(o) => !o && setRejectDialog(null)}>

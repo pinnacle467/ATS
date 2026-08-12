@@ -72,6 +72,22 @@ export default function PublicOfferPage() {
           {/* eslint-disable-next-line react/no-danger */}
           <div dangerouslySetInnerHTML={{ __html: offer.letter_html }} />
 
+          {offer.contract_url && (
+            <a
+              href={offer.contract_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-5 flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 hover:border-emerald-400 hover:bg-emerald-50/50 transition-colors"
+              data-testid="offer-contract-download"
+            >
+              <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 text-lg">📄</span>
+              <span className="flex-1 min-w-0">
+                <span className="block text-sm font-medium text-slate-800 truncate">{offer.contract_filename || 'Contract document'}</span>
+                <span className="block text-xs text-slate-500">Click to view or download</span>
+              </span>
+            </a>
+          )}
+
           {resolved ? (
             <div
               className={`mt-6 pt-6 border-t border-slate-100 text-center ${offer.status === 'accepted' ? 'text-emerald-700' : 'text-rose-700'}`}

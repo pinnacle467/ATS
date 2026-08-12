@@ -211,9 +211,11 @@ async def send_custom(
     sender_user_id: Optional[str] = None,
     recruiter_id: Optional[str] = None,  # deprecated alias
     log_meta: Optional[dict] = None,
+    attachments: Optional[list] = None,
 ) -> dict:
     """Send a free-form (non-template) email. Subject/body are rendered so that
     `{{candidate_name}}` etc. still work if the recruiter uses variables.
+    `attachments` is an optional list of {filename, data, content_type} dicts.
     Returns {sent: bool, reason: str, ...}."""
     if not to_email:
         return {'sent': False, 'reason': 'no_recipient'}
@@ -229,7 +231,7 @@ async def send_custom(
     rendered_subject = render(subject, context)
     rendered_html = render(html_body, context)
     try:
-        result = send_gmail(creds, to_email, rendered_subject, rendered_html)
+        result = send_gmail(creds, to_email, rendered_subject, rendered_html, attachments=attachments)
         await db.email_log.insert_one({
             'id': new_id(),
             'template_key': 'custom',
