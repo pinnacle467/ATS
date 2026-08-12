@@ -12,6 +12,17 @@ explicitly re-sync.
 
 ## To re-sync your VPS with the latest Emergent data (repeatable, run anytime)
 
+**If your VPS was set up with `deploy/deploy.sh` (see `deploy/README.md`), just run:**
+
+```bash
+sudo RESTORE_DATA=1 bash /opt/ats/deploy/deploy.sh
+```
+
+This pulls the latest code AND force-overwrites the database from the latest `snapshot.json` in
+one command, then restarts everything for you.
+
+**Manual / other deployments:**
+
 ```bash
 cd /path/to/your/app        # your VPS checkout of this repo
 git pull

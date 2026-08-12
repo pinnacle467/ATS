@@ -66,15 +66,21 @@ Also add this to your Google Cloud OAuth client:
 
 ## 🔄 Update flow (after code changes)
 
+**One-shot command — pulls latest code AND overwrites the database with the latest data:**
+
 ```bash
-sudo -u ats bash -c '
-  cd /opt/ats &&
-  git pull &&
-  .venv/bin/pip install -r backend/requirements.txt --extra-index-url https://d33sy5i8bnduwe.cloudfront.net/simple/ &&
-  cd frontend && yarn install --frozen-lockfile && yarn build
-'
-sudo systemctl restart ats-backend
-sudo systemctl reload nginx
+sudo RESTORE_DATA=1 bash /opt/ats/deploy/deploy.sh
+```
+
+This does everything: `git fetch` + hard reset to `origin/main`, reinstalls backend/frontend deps,
+rebuilds the frontend, **overwrites the live database from `backend/data_seed/snapshot.json`**
+(the data snapshot pushed from Emergent — every collection: candidates, tenants, offers, AI
+settings, etc.), then restarts `ats-backend` + reloads Nginx.
+
+Drop `RESTORE_DATA=1` if you only want the latest **code** without touching the database:
+
+```bash
+sudo bash /opt/ats/deploy/deploy.sh
 ```
 
 ## 🩺 Troubleshoot

@@ -3,8 +3,10 @@
 # Pinnacle ATS — bulletproof redeploy script (idempotent, run as often as you like)
 #
 # USAGE:
-#   sudo bash /opt/ats/deploy/deploy.sh              # deploy latest code (safe, keeps live data)
-#   sudo RESTORE_DATA=1 bash /opt/ats/deploy/deploy.sh   # ALSO drop+restore the repo's mongodump
+#   sudo bash /opt/ats/deploy/deploy.sh                 # deploy latest code (safe, keeps live data)
+#   sudo RESTORE_DATA=1 bash /opt/ats/deploy/deploy.sh  # ALSO force-overwrite the DB from the
+#                                                        # repo's backend/data_seed/snapshot.json
+#                                                        # (the latest data pushed from Emergent)
 #
 # What it always does (in order):
 #   1. Configure git safe.directory (survives chown to `ats`)
@@ -13,7 +15,8 @@
 #   4. Repair file ownership -> ats:ats
 #   5. Reinstall Python backend deps (3-step workaround for emergentintegrations+litellm)
 #   6. Rebuild frontend (yarn install --frozen-lockfile && yarn build)
-#   7. [Optional, if RESTORE_DATA=1] mongorestore --drop from bundled dump
+#   7. [Optional, if RESTORE_DATA=1] scripts/restore_snapshot.py --yes — full overwrite of every
+#      collection from backend/data_seed/snapshot.json (the snapshot just pulled from GitHub)
 #   8. daemon-reload, restart ats-backend, nginx -t + reload
 #   9. Print live status + candidate/job/file counts
 # =============================================================================
@@ -23,7 +26,6 @@ APP_DIR="${APP_DIR:-/opt/ats}"
 APP_USER="${APP_USER:-ats}"
 BRANCH="${BRANCH:-main}"
 DB_NAME_VAR="${DB_NAME_VAR:-sprout_ats}"
-DUMP_DIR="${DUMP_DIR:-$APP_DIR/backups/pre-remote-sync-20260722-231124/mongodump}"
 
 log()  { printf '\n\033[1;36m▶ %s\033[0m\n' "$*"; }
 warn() { printf '\n\033[1;33m⚠ %s\033[0m\n' "$*"; }
@@ -73,16 +75,14 @@ sudo -u "$APP_USER" -H bash -lc "
   yarn build
 "
 
-# 7. Optional data restore
+# 7. Optional data restore — full overwrite from the snapshot just pulled from GitHub
 if [[ "${RESTORE_DATA:-0}" == "1" ]]; then
-  if [[ -d "$DUMP_DIR/$DB_NAME_VAR" ]]; then
-    log "Restoring MongoDB dump (drops + reloads $DB_NAME_VAR)…"
-    mongorestore --drop --nsFrom="${DB_NAME_VAR}.*" --nsTo="${DB_NAME_VAR}.*" "$DUMP_DIR"
-  else
-    warn "RESTORE_DATA=1 was set but no dump found at $DUMP_DIR/$DB_NAME_VAR — skipping"
-  fi
+  log "Restoring database from backend/data_seed/snapshot.json (full overwrite)…"
+  sudo -u "$APP_USER" -H bash -lc "
+    cd '$APP_DIR' && .venv/bin/python scripts/restore_snapshot.py --yes
+  "
 else
-  log "Skipping data restore (set RESTORE_DATA=1 to force)"
+  log "Skipping data restore (set RESTORE_DATA=1 to force-sync from the latest snapshot.json)"
 fi
 
 # 8. Restart services
