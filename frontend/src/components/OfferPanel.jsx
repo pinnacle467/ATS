@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { CheckCircle2, Circle, FileSignature, Link as LinkIcon, Loader2, Paperclip, Pencil, Send, ThumbsDown, ThumbsUp, XCircle } from 'lucide-react';
+import { CheckCircle2, Circle, FileSignature, Link as LinkIcon, Loader2, Paperclip, Pencil, Send, ThumbsDown, ThumbsUp, Trash2, XCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -78,6 +78,20 @@ export default function OfferPanel({ candidateId, candidateName, isRecruiter }) 
     }
   };
 
+  const deleteOffer = async (offerId) => {
+    if (!window.confirm('Delete this offer permanently? This cannot be undone.')) return;
+    setActingOn(offerId);
+    try {
+      await api.delete(`/offers/${offerId}`);
+      toast.success('Offer deleted');
+      load();
+    } catch (e) {
+      toast.error(errMsg(e, 'Could not delete offer'));
+    } finally {
+      setActingOn(null);
+    }
+  };
+
   const previewLetter = async (offerId) => {
     try {
       const r = await api.get(`/offers/${offerId}/letter`);
@@ -134,7 +148,20 @@ export default function OfferPanel({ candidateId, candidateName, isRecruiter }) 
                 <CardTitle className="text-sm font-semibold">{o.job_title || 'Offer'}</CardTitle>
                 <p className="text-xs text-muted-foreground mt-0.5">Created by {o.created_by_name} · {new Date(o.created_at).toLocaleDateString()}</p>
               </div>
-              <Badge variant="outline" className={meta.className}>{meta.label}</Badge>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <Badge variant="outline" className={meta.className}>{meta.label}</Badge>
+                {isRecruiter && (
+                  <Button
+                    size="icon" variant="ghost"
+                    className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0"
+                    onClick={() => deleteOffer(o.id)} disabled={actingOn === o.id}
+                    data-testid={`offer-delete-button-${o.id}`}
+                    title="Delete offer"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+              </div>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">

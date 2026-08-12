@@ -4,7 +4,7 @@ import { format } from 'date-fns';
 import {
   Ban, Bell, CalendarClock, CalendarX2, CheckCircle2, Copy, ExternalLink,
   FileClock, History, Link2, Loader2, MailPlus, RefreshCw, RotateCcw, Search, Send,
-  XCircle,
+  Trash2, XCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
@@ -115,6 +115,13 @@ export default function SchedulingDashboardPage() {
     copyLink(r.data.scheduling_link);
     toast.success('New link generated & copied');
   });
+  const deleteRequest = (req) => {
+    if (!window.confirm(`Delete the scheduling link for ${req.candidate_name || 'this candidate'}? This cannot be undone.`)) return;
+    withBusy(req.id, async () => {
+      await api.delete(`/scheduling/requests/${req.id}`);
+      toast.success('Scheduling request deleted');
+    });
+  };
 
   const openTimeline = (req) => {
     setTimelineFor(req);
@@ -254,6 +261,10 @@ export default function SchedulingDashboardPage() {
                                 <RefreshCw className="h-3.5 w-3.5 mr-2" /> Regenerate link
                               </DropdownMenuItem>
                             )}
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={() => deleteRequest(req)} className="text-destructive" data-testid={`scheduling-delete-${req.id}`}>
+                              <Trash2 className="h-3.5 w-3.5 mr-2" /> Delete
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>

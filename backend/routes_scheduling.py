@@ -361,6 +361,26 @@ async def regenerate_link(req_id: str, user: dict = Depends(require_roles('admin
     return {'ok': True, 'scheduling_link': f"{_app_base()}/schedule/interview/{tok}"}
 
 
+@router.delete('/scheduling/requests/{req_id}')
+async def delete_request(req_id: str, user: dict = Depends(require_roles('admin', 'recruiter'))):
+    """Permanently delete a scheduling request/link. Best-effort cleans up the
+    Google Calendar event if one was already created for a booked interview."""
+    iv = await db.interviews.find_one({'id': req_id, 'self_scheduled': True})
+    if not iv:
+        raise HTTPException(status_code=404, detail='Request not found')
+    if iv.get('google_event_id'):
+        creds, _org = await _organizer_creds(iv)
+        if creds:
+            try:
+                delete_event(creds, iv['google_event_id'])
+            except Exception as e:  # noqa: BLE001
+                logger.warning('delete_request: calendar cleanup failed for %s: %s', req_id, e)
+    await log_audit(user, 'scheduling.request_deleted', 'interview', req_id,
+                     f"deleted scheduling request for {iv.get('candidate_id')}")
+    await db.interviews.delete_one({'id': req_id})
+    return {'ok': True}
+
+
 # ------------------------------------------------------------- public API ----
 
 @router.get('/schedule/{token}')

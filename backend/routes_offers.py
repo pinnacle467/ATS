@@ -448,6 +448,22 @@ async def cancel_offer(offer_id: str, user: dict = Depends(get_current_user)):
     return {'ok': True}
 
 
+@router.delete('/{offer_id}')
+async def delete_offer(offer_id: str, user: dict = Depends(get_current_user)):
+    offer = await db.offers.find_one({'id': offer_id})
+    if not offer:
+        raise HTTPException(status_code=404, detail='Offer not found')
+    if not (is_admin_or_higher(user) or offer['created_by'] == user['id']):
+        raise HTTPException(status_code=403, detail='Only the creator or an admin can delete this offer')
+    if offer.get('contract_file_id'):
+        await db.files.delete_one({'id': offer['contract_file_id']})
+    await db.offers.delete_one({'id': offer_id})
+    await log_audit(user, 'offer_deleted', 'offer', offer_id, f"Deleted offer for {offer.get('candidate_name')}")
+    await log_activity(user, 'offer_deleted', f"Deleted offer for {offer.get('candidate_name')}",
+                        candidate_id=offer['candidate_id'], job_id=offer.get('job_id'))
+    return {'ok': True}
+
+
 @router.get('/{offer_id}/letter')
 async def preview_letter(offer_id: str, user: dict = Depends(require_roles('admin', 'recruiter'))):
     offer = await db.offers.find_one({'id': offer_id}, {'_id': 0})
