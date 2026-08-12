@@ -18,34 +18,38 @@ xAI account concurrency limit.
 import asyncio
 import json
 import logging
-import os
 import random
 import re
 from typing import Optional
 
 from openai import AsyncOpenAI, APIStatusError, RateLimitError
 
+from ai_settings import (  # noqa: F401 — AIConfigError re-exported for callers
+    AIConfigError,
+    PROVIDERS,
+    build_client,
+    resolve_for_current_tenant,
+    supports_reasoning_effort,
+)
 from llm_helper import LLM_SEMAPHORE
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL = os.environ.get('GROK_MODEL', 'grok-4.3')
-XAI_BASE_URL = 'https://api.x.ai/v1'
 MAX_RETRIES = 5
 BASE_BACKOFF_SEC = 2.0
 
-# Lazily-built client (avoids reading the env at import time before load_dotenv)
-_client: Optional[AsyncOpenAI] = None
+# Cache one AsyncOpenAI client per (provider, api_key) so we don't rebuild it on
+# every call. Keys can change (owner rotates them), so we key by the pair.
+_clients: dict = {}
 
 
-def _get_client() -> AsyncOpenAI:
-    global _client
-    if _client is None:
-        api_key = os.environ.get('XAI_API_KEY')
-        if not api_key:
-            raise RuntimeError('XAI_API_KEY is not set in backend/.env')
-        _client = AsyncOpenAI(api_key=api_key, base_url=XAI_BASE_URL, timeout=90.0)
-    return _client
+def _client_for(provider: str, api_key: str) -> AsyncOpenAI:
+    ck = (provider, api_key)
+    client = _clients.get(ck)
+    if client is None:
+        client = build_client(provider, api_key)
+        _clients[ck] = client
+    return client
 
 
 def _strip_fences(raw: str) -> str:
@@ -64,26 +68,32 @@ async def grok_completion(
     model: Optional[str] = None,
     max_tokens: int = 4096,
 ) -> str:
-    """Send one chat completion to Grok and return the raw text of the first choice.
+    """Send one chat completion to the workspace's configured AI provider and
+    return the raw text of the first choice.
 
-    Retries on rate-limit / concurrency / transient 5xx responses with exponential
-    backoff + jitter, up to MAX_RETRIES. Non-transient errors bubble up immediately.
+    The provider, model and API key are resolved from the CURRENT tenant's
+    settings (set in the platform control panel). Retries on rate-limit /
+    concurrency / transient 5xx responses with exponential backoff + jitter,
+    up to MAX_RETRIES. Non-transient errors bubble up immediately.
     """
-    client = _get_client()
-    model = model or DEFAULT_MODEL
+    provider, resolved_model, api_key = await resolve_for_current_tenant()
+    client = _client_for(provider, api_key)
+    use_model = model or resolved_model
     last_exc: Optional[Exception] = None
     for attempt in range(MAX_RETRIES):
         async with LLM_SEMAPHORE:
             try:
-                completion = await client.chat.completions.create(
-                    model=model,
-                    messages=[
+                kwargs = {
+                    'model': use_model,
+                    'messages': [
                         {'role': 'system', 'content': system},
                         {'role': 'user', 'content': user},
                     ],
-                    reasoning_effort=reasoning_effort,
-                    max_tokens=max_tokens,
-                )
+                    'max_tokens': max_tokens,
+                }
+                if supports_reasoning_effort(provider) and reasoning_effort:
+                    kwargs['reasoning_effort'] = reasoning_effort
+                completion = await client.chat.completions.create(**kwargs)
                 return completion.choices[0].message.content or ''
             except (RateLimitError, APIStatusError) as e:
                 last_exc = e
@@ -94,13 +104,13 @@ async def grok_completion(
                 last_exc = e
         wait = BASE_BACKOFF_SEC * (2 ** attempt) + random.uniform(0, 0.5)
         logger.warning(
-            'Grok call rate-limited/transient (attempt %s/%s), backing off %.1fs: %s',
-            attempt + 1, MAX_RETRIES, wait, last_exc,
+            'AI call (%s/%s) rate-limited/transient (attempt %s/%s), backing off %.1fs: %s',
+            provider, use_model, attempt + 1, MAX_RETRIES, wait, last_exc,
         )
         await asyncio.sleep(wait)
     if last_exc is not None:
         raise last_exc
-    raise RuntimeError('Grok call failed with no exception recorded')
+    raise RuntimeError('AI call failed with no exception recorded')
 
 
 async def grok_json(

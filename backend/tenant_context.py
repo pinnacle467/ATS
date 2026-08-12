@@ -25,7 +25,7 @@ class TenantScopeError(Exception):
 #  - tenants / platform_admins : platform level
 #  - password_resets           : looked up by a globally-unique secret token
 #  - counters                  : keyed by a tenant-prefixed _id instead (utils.py)
-GLOBAL_COLLECTIONS = {'tenants', 'platform_admins', 'password_resets', 'counters'}
+GLOBAL_COLLECTIONS = {'tenants', 'platform_admins', 'password_resets', 'counters', 'tenant_ai_settings'}
 
 
 def get_tenant_id():

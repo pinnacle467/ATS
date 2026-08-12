@@ -3,6 +3,7 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import {
   Building2,
   Copy,
+  Cpu,
   KeyRound,
   LogIn,
   LogOut,
@@ -12,12 +13,20 @@ import {
   ShieldCheck,
   Trash2,
   Users,
+  Zap,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -47,6 +56,14 @@ export default function PlatformDashboardPage() {
   const [pwOpen, setPwOpen] = useState(false);
   const [pw, setPw] = useState({ current_password: '', new_password: '', confirm: '' });
 
+  // Per-tenant AI provider config
+  const [providers, setProviders] = useState([]);
+  const [aiTenant, setAiTenant] = useState(null);
+  const [aiForm, setAiForm] = useState({ provider: 'grok', model: '', api_key: '' });
+  const [aiExisting, setAiExisting] = useState(null);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiTesting, setAiTesting] = useState(false);
+
   const admin = (() => {
     try {
       return JSON.parse(localStorage.getItem('ats_platform_admin')) || {};
@@ -66,6 +83,89 @@ export default function PlatformDashboardPage() {
   };
 
   useEffect(load, []);
+
+  useEffect(() => {
+    platformApi
+      .get('/platform/ai/providers')
+      .then((r) => setProviders(r.data))
+      .catch(() => {});
+  }, []);
+
+  const providerLabel = (id) => providers.find((p) => p.id === id)?.label || id;
+  const providerDefaultModel = (id) => providers.find((p) => p.id === id)?.default_model || '';
+
+  const openAi = (t) => {
+    setAiTenant(t);
+    setAiExisting(t.ai || null);
+    const provider = t.ai?.provider || 'grok';
+    setAiForm({
+      provider,
+      model: t.ai?.model || providerDefaultModel(provider),
+      api_key: '',
+    });
+  };
+
+  const onProviderChange = (provider) => {
+    // When switching provider, prefill its default model (unless editing the
+    // provider already saved for this tenant).
+    const keepModel = aiExisting?.provider === provider ? aiExisting?.model : '';
+    setAiForm((f) => ({ ...f, provider, model: keepModel || providerDefaultModel(provider) }));
+  };
+
+  const testAi = async () => {
+    setAiTesting(true);
+    try {
+      const r = await platformApi.post(`/platform/tenants/${aiTenant.id}/ai/test`, {
+        provider: aiForm.provider,
+        model: aiForm.model,
+        api_key: aiForm.api_key, // empty = use stored key
+      });
+      if (r.data.ok) toast.success(r.data.message);
+      else toast.error(r.data.message);
+    } catch (e) {
+      toast.error(errMsg(e, 'Test failed'));
+    } finally {
+      setAiTesting(false);
+    }
+  };
+
+  const saveAi = async () => {
+    setAiBusy(true);
+    try {
+      const r = await platformApi.put(`/platform/tenants/${aiTenant.id}/ai`, {
+        provider: aiForm.provider,
+        model: aiForm.model,
+        api_key: aiForm.api_key,
+      });
+      toast.success(`AI provider saved for ${aiTenant.name}`);
+      setTenants((prev) => prev.map((x) => (x.id === aiTenant.id ? { ...x, ai: r.data } : x)));
+      setAiTenant(null);
+    } catch (e) {
+      toast.error(errMsg(e, 'Could not save AI settings'));
+    } finally {
+      setAiBusy(false);
+    }
+  };
+
+  const clearAi = async () => {
+    setAiBusy(true);
+    try {
+      await platformApi.delete(`/platform/tenants/${aiTenant.id}/ai`);
+      toast.success(`AI provider removed for ${aiTenant.name}`);
+      setTenants((prev) =>
+        prev.map((x) =>
+          x.id === aiTenant.id
+            ? { ...x, ai: { configured: false, provider: null, model: null, key_masked: null } }
+            : x,
+        ),
+      );
+      setAiTenant(null);
+    } catch (e) {
+      toast.error(errMsg(e, 'Could not remove AI settings'));
+    } finally {
+      setAiBusy(false);
+    }
+  };
 
   if (!localStorage.getItem('ats_platform_token')) return <Navigate to="/platform/login" replace />;
 
@@ -258,9 +358,33 @@ export default function PlatformDashboardPage() {
                     {t.status}
                   </Badge>
                   <Badge className="bg-slate-800 text-slate-300 border border-slate-700">{t.plan}</Badge>
+                  {t.ai?.configured ? (
+                    <Badge
+                      className="bg-violet-500/15 text-violet-300 border border-violet-500/30"
+                      data-testid={`tenant-ai-${t.slug}`}
+                    >
+                      <Cpu className="h-3 w-3 mr-1" /> {providerLabel(t.ai.provider)}
+                    </Badge>
+                  ) : (
+                    <Badge
+                      className="bg-slate-800 text-slate-500 border border-slate-700"
+                      data-testid={`tenant-ai-${t.slug}`}
+                    >
+                      No AI key
+                    </Badge>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-slate-700 bg-transparent text-slate-200 hover:bg-slate-800"
+                    onClick={() => openAi(t)}
+                    data-testid={`ai-config-${t.slug}`}
+                  >
+                    <Cpu className="h-4 w-4 mr-1" /> AI
+                  </Button>
                   <Button
                     variant="outline"
                     size="sm"
@@ -419,6 +543,91 @@ export default function PlatformDashboardPage() {
             <Button onClick={changePassword} disabled={busy} data-testid="change-password-submit">
               {busy ? 'Saving…' : 'Update password'}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Per-tenant AI provider */}
+      <Dialog open={!!aiTenant} onOpenChange={(o) => !o && setAiTenant(null)}>
+        <DialogContent className="sm:max-w-lg" data-testid="ai-config-dialog">
+          <DialogHeader>
+            <DialogTitle>AI provider — {aiTenant?.name}</DialogTitle>
+            <DialogDescription>
+              Choose which model this workspace uses for resume parsing, reply parsing and fit
+              scoring, and paste that provider&apos;s API key. Each workspace is fully independent.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label>Provider</Label>
+              <Select value={aiForm.provider} onValueChange={onProviderChange}>
+                <SelectTrigger data-testid="ai-provider-select">
+                  <SelectValue placeholder="Choose a provider" />
+                </SelectTrigger>
+                <SelectContent>
+                  {providers.map((p) => (
+                    <SelectItem key={p.id} value={p.id} data-testid={`ai-provider-${p.id}`}>
+                      {p.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="ai-model">Model</Label>
+              <Input
+                id="ai-model"
+                data-testid="ai-model-input"
+                value={aiForm.model}
+                onChange={(e) => setAiForm({ ...aiForm, model: e.target.value })}
+                placeholder={providerDefaultModel(aiForm.provider) || 'model name'}
+              />
+              <p className="text-xs text-muted-foreground">
+                Default for {providerLabel(aiForm.provider)}:{' '}
+                <span className="font-mono">{providerDefaultModel(aiForm.provider) || '—'}</span>
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="ai-key">API key</Label>
+              <Input
+                id="ai-key"
+                type="password"
+                data-testid="ai-key-input"
+                value={aiForm.api_key}
+                onChange={(e) => setAiForm({ ...aiForm, api_key: e.target.value })}
+                placeholder={
+                  aiExisting?.configured
+                    ? `Saved: ${aiExisting.key_masked} — leave blank to keep`
+                    : 'Paste the provider API key'
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                Stored securely and never shown again in full. Leave blank to keep the existing key.
+              </p>
+            </div>
+          </div>
+          <DialogFooter className="flex-col-reverse sm:flex-row sm:justify-between gap-2">
+            <div>
+              {aiExisting?.configured && (
+                <Button
+                  variant="ghost"
+                  className="text-rose-500 hover:text-rose-400 hover:bg-rose-500/10"
+                  onClick={clearAi}
+                  disabled={aiBusy}
+                  data-testid="ai-clear-button"
+                >
+                  Remove key
+                </Button>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={testAi} disabled={aiTesting} data-testid="ai-test-button">
+                <Zap className="h-4 w-4 mr-1" /> {aiTesting ? 'Testing…' : 'Test key'}
+              </Button>
+              <Button onClick={saveAi} disabled={aiBusy} data-testid="ai-save-button">
+                {aiBusy ? 'Saving…' : 'Save'}
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

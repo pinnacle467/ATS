@@ -11,6 +11,14 @@ from pydantic import BaseModel, EmailStr, Field
 
 from auth import create_token, get_platform_admin, hash_password, verify_password
 from database import raw_db
+from ai_settings import (
+    PROVIDERS,
+    delete_tenant_ai_settings,
+    get_tenant_ai_settings,
+    public_ai_settings,
+    test_connection,
+    upsert_tenant_ai_settings,
+)
 from tenant_context import GLOBAL_COLLECTIONS
 from tenant_provision import provision_tenant_defaults
 from tenants import (
@@ -54,6 +62,19 @@ class TenantUpdate(BaseModel):
 class OwnerPasswordChange(BaseModel):
     current_password: str
     new_password: str = Field(min_length=8)
+
+
+class TenantAISettings(BaseModel):
+    provider: str
+    model: Optional[str] = None
+    # Empty / omitted api_key on PUT means "keep the key already on file".
+    api_key: Optional[str] = None
+
+
+class TenantAITest(BaseModel):
+    provider: str
+    model: Optional[str] = None
+    api_key: Optional[str] = None
 
 
 @router.post('/login')
@@ -106,6 +127,7 @@ async def _tenant_row(t: dict) -> dict:
         counts[coll] = await raw_db[coll].count_documents({'tenant_id': t['id']})
     row['counts'] = counts
     row['created_at'] = t.get('created_at')
+    row['ai'] = await public_ai_settings(t['id'])
     return row
 
 
@@ -200,3 +222,68 @@ async def impersonate_tenant(tenant_id: str, admin: dict = Depends(get_platform_
     token = create_token(owner['id'], tenant_id=tenant_id, kind='user')
     logger.warning('Platform owner %s impersonating %s in tenant %s', admin['email'], owner['email'], t['slug'])
     return {'token': token, 'user': owner, 'tenant': public_tenant(t)}
+
+
+# ----------------------------------------------------------------------------
+# Per-tenant AI provider configuration (control-panel only)
+# ----------------------------------------------------------------------------
+@router.get('/ai/providers')
+async def ai_providers(admin: dict = Depends(get_platform_admin)):
+    """The provider catalog for the control-panel dropdown."""
+    return [
+        {'id': pid, 'label': meta['label'], 'default_model': meta['default_model'], 'key_hint': meta.get('key_hint')}
+        for pid, meta in PROVIDERS.items()
+    ]
+
+
+@router.get('/tenants/{tenant_id}/ai')
+async def get_tenant_ai(tenant_id: str, admin: dict = Depends(get_platform_admin)):
+    t = await get_tenant(tenant_id)
+    if not t:
+        raise HTTPException(status_code=404, detail='Tenant not found')
+    return await public_ai_settings(tenant_id)
+
+
+@router.put('/tenants/{tenant_id}/ai')
+async def set_tenant_ai(tenant_id: str, body: TenantAISettings, admin: dict = Depends(get_platform_admin)):
+    t = await get_tenant(tenant_id)
+    if not t:
+        raise HTTPException(status_code=404, detail='Tenant not found')
+    if body.provider not in PROVIDERS:
+        raise HTTPException(status_code=422, detail=f'Unknown provider "{body.provider}"')
+    existing = await get_tenant_ai_settings(tenant_id)
+    key = (body.api_key or '').strip()
+    if not key:
+        # No new key typed — keep whatever is already on file (lets the owner
+        # change provider/model without re-pasting the secret).
+        key = (existing or {}).get('api_key')
+    model = (body.model or '').strip() or None
+    await upsert_tenant_ai_settings(tenant_id, body.provider, model, key, admin['email'])
+    logger.info('Platform owner %s set AI provider=%s for tenant %s', admin['email'], body.provider, t['slug'])
+    return await public_ai_settings(tenant_id)
+
+
+@router.delete('/tenants/{tenant_id}/ai')
+async def clear_tenant_ai(tenant_id: str, admin: dict = Depends(get_platform_admin)):
+    t = await get_tenant(tenant_id)
+    if not t:
+        raise HTTPException(status_code=404, detail='Tenant not found')
+    await delete_tenant_ai_settings(tenant_id)
+    logger.info('Platform owner %s cleared AI config for tenant %s', admin['email'], t['slug'])
+    return {'ok': True}
+
+
+@router.post('/tenants/{tenant_id}/ai/test')
+async def test_tenant_ai(tenant_id: str, body: TenantAITest, admin: dict = Depends(get_platform_admin)):
+    t = await get_tenant(tenant_id)
+    if not t:
+        raise HTTPException(status_code=404, detail='Tenant not found')
+    if body.provider not in PROVIDERS:
+        raise HTTPException(status_code=422, detail=f'Unknown provider "{body.provider}"')
+    key = (body.api_key or '').strip()
+    if not key:
+        key = (await get_tenant_ai_settings(tenant_id) or {}).get('api_key')
+    if not key:
+        return {'ok': False, 'message': 'No API key to test — enter one first.'}
+    ok, message = await test_connection(body.provider, (body.model or '').strip() or None, key)
+    return {'ok': ok, 'message': message}
