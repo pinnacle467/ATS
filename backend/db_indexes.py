@@ -43,6 +43,10 @@ COLLECTIONS_WITH_UNIQUE_ID: tuple[str, ...] = (
     'applications',
     'import_sessions',
     'offers',
+    'job_board_integrations',
+    'job_board_publications',
+    'job_board_sync_logs',
+    'job_board_webhook_events',
 )
 
 
@@ -144,6 +148,53 @@ async def ensure_indexes(db) -> dict:
             report['existed'].append('offers.public_token')
         else:
             report['errors'].append({'collection': 'offers', 'field': 'public_token', 'error': msg})
+
+    # job_board_integrations — one connection per provider per tenant
+    try:
+        await db.job_board_integrations.create_index([('tenant_id', 1), ('provider', 1)], unique=True, name='tenant_provider_unique')
+        report['created'].append('job_board_integrations.tenant_id+provider')
+    except Exception as e:  # noqa: BLE001
+        msg = str(e)
+        if 'already exists' in msg.lower() or 'IndexOptionsConflict' in msg:
+            report['existed'].append('job_board_integrations.tenant_id+provider')
+        else:
+            report['errors'].append({'collection': 'job_board_integrations', 'field': 'tenant_id+provider', 'error': msg})
+
+    # job_board_publications — one distribution row per job per provider
+    try:
+        await db.job_board_publications.create_index([('tenant_id', 1), ('job_id', 1), ('provider', 1)], unique=True, name='tenant_job_provider_unique')
+        await db.job_board_publications.create_index('job_id', name='job_lookup')
+        report['created'].append('job_board_publications.tenant_id+job_id+provider')
+    except Exception as e:  # noqa: BLE001
+        msg = str(e)
+        if 'already exists' in msg.lower() or 'IndexOptionsConflict' in msg:
+            report['existed'].append('job_board_publications.tenant_id+job_id+provider')
+        else:
+            report['errors'].append({'collection': 'job_board_publications', 'field': 'tenant_id+job_id+provider', 'error': msg})
+
+    # job_board_webhook_events — enforces webhook delivery idempotency
+    try:
+        await db.job_board_webhook_events.create_index([('webhook_id', 1), ('idempotency_key', 1)], unique=True, name='webhook_idempotency_unique')
+        report['created'].append('job_board_webhook_events.webhook_id+idempotency_key')
+    except Exception as e:  # noqa: BLE001
+        msg = str(e)
+        if 'already exists' in msg.lower() or 'IndexOptionsConflict' in msg:
+            report['existed'].append('job_board_webhook_events.webhook_id+idempotency_key')
+        else:
+            report['errors'].append({'collection': 'job_board_webhook_events', 'field': 'webhook_id+idempotency_key', 'error': msg})
+
+    # applications — job-board-sourced applications are queried by job/provider/status a lot
+    try:
+        await db.applications.create_index('job_id', name='job_lookup')
+        await db.applications.create_index('candidate_id', name='candidate_lookup')
+        await db.applications.create_index([('provider', 1), ('status', 1)], name='provider_status_lookup')
+        report['created'].append('applications.job_id/candidate_id/provider+status')
+    except Exception as e:  # noqa: BLE001
+        msg = str(e)
+        if 'already exists' in msg.lower() or 'IndexOptionsConflict' in msg:
+            report['existed'].append('applications.job_id/candidate_id/provider+status')
+        else:
+            report['errors'].append({'collection': 'applications', 'field': 'job_id/candidate_id/provider+status', 'error': msg})
 
     return report
 

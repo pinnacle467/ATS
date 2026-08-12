@@ -23,6 +23,11 @@ export const SOURCES = [
   { value: 'job_board', label: 'Job Board' },
   { value: 'career_site', label: 'Career Site' },
   { value: 'linkedin', label: 'LinkedIn' },
+  { value: 'indeed', label: 'Indeed' },
+  { value: 'ziprecruiter', label: 'ZipRecruiter' },
+  { value: 'generic_xml', label: 'Generic XML Feed' },
+  { value: 'generic_webhook', label: 'Job Board Webhook' },
+  { value: 'mock', label: 'Sandbox (Testing)' },
   { value: 'vendor', label: 'Agency / Vendor' },
   { value: 'other', label: 'Other' },
 ];

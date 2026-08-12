@@ -27,6 +27,7 @@ import routes_imports
 import routes_calendar
 import routes_offers
 import routes_scheduling
+import routes_job_boards
 from reminder_scheduler import reminder_loop
 from scheduling_reminders import scheduling_reminder_loop
 from snapshot_scheduler import install_pre_commit_hook
@@ -69,6 +70,8 @@ api_router.include_router(routes_imports.router)
 api_router.include_router(routes_calendar.router)
 api_router.include_router(routes_offers.router)
 api_router.include_router(routes_scheduling.router)
+api_router.include_router(routes_job_boards.router)
+api_router.include_router(routes_job_boards.public_router)
 api_router.include_router(routes_career.router)
 api_router.include_router(routes_career_security.router)
 api_router.include_router(routes_analytics.router)

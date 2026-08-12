@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import ChangeLog from '@/components/ChangeLog';
+import JobBoardDistributionCard from '@/components/JobBoardDistributionCard';
 import JobTeamPanel from '@/components/JobTeamPanel';
 import KanbanBoard from '@/components/KanbanBoard';
 import { StageBadge, SOURCES, ResumeIndicator, REJECTION_REASONS } from '@/pages/CandidatesPage';
@@ -292,6 +293,8 @@ export default function JobDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      <JobBoardDistributionCard jobId={job.id} canManage={canManage} onApplicationIngested={load} />
 
       <Card className="shadow-none">
         <CardHeader className="pb-2">

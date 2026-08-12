@@ -15,6 +15,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/context/AuthContext';
 import { api, errMsg } from '@/lib/api';
 import { refreshDepartments, refreshInterviewKits, refreshPipelineStages, refreshTags, refreshUsers } from '@/lib/referenceCache';
+import JobBoardsTab from '@/components/JobBoardsTab';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -635,6 +636,7 @@ export default function AdminPage() {
           <TabsTrigger value="org" data-testid="admin-tab-org">Departments & Tags</TabsTrigger>
           <TabsTrigger value="kits" data-testid="admin-tab-kits">Interview Kits</TabsTrigger>
           <TabsTrigger value="offer_template" data-testid="admin-tab-offer-template">Offer Letter</TabsTrigger>
+          <TabsTrigger value="job_boards" data-testid="admin-tab-job-boards">Job Boards</TabsTrigger>
           <TabsTrigger value="audit" data-testid="admin-tab-audit">Audit Log</TabsTrigger>
           <TabsTrigger value="data" data-testid="admin-tab-data">Data Tools</TabsTrigger>
         </TabsList>
@@ -643,6 +645,7 @@ export default function AdminPage() {
         <TabsContent value="org" className="mt-4"><DepartmentsTagsTab /></TabsContent>
         <TabsContent value="kits" className="mt-4"><KitsTab /></TabsContent>
         <TabsContent value="offer_template" className="mt-4"><OfferTemplateTab /></TabsContent>
+        <TabsContent value="job_boards" className="mt-4"><JobBoardsTab /></TabsContent>
         <TabsContent value="audit" className="mt-4"><AuditTab /></TabsContent>
         <TabsContent value="data" className="mt-4"><IndustryBackfillTab /></TabsContent>
       </Tabs>
