@@ -6,12 +6,13 @@ JobBoardProvider, then add one line here. Nothing else in the app changes.
 from job_boards.generic_webhook_provider import GenericWebhookProvider
 from job_boards.generic_xml_provider import GenericXMLProvider
 from job_boards.mock_provider import MockProvider
-from job_boards.partner_providers import IndeedProvider, LinkedInProvider, ZipRecruiterProvider
+from job_boards.partner_providers import IndeedProvider, LinkedInProvider, NaukriProvider, ZipRecruiterProvider
 
 PROVIDER_CLASSES = {
     'indeed': IndeedProvider,
     'ziprecruiter': ZipRecruiterProvider,
     'linkedin': LinkedInProvider,
+    'naukri': NaukriProvider,
     'generic_xml': GenericXMLProvider,
     'generic_webhook': GenericWebhookProvider,
     'mock': MockProvider,

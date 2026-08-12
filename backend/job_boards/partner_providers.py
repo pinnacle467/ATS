@@ -94,3 +94,17 @@ class LinkedInProvider(_UnapprovedPartnerProvider):
         {'key': 'client_secret', 'label': 'OAuth Client Secret', 'type': 'password', 'required': True},
         {'key': 'organization_id', 'label': 'LinkedIn Organization ID', 'type': 'text', 'required': True},
     ]
+
+
+class NaukriProvider(_UnapprovedPartnerProvider):
+    key = 'naukri'
+    display_name = 'Naukri.com'
+    description = ('Publish jobs to Naukri.com (India). Naukri has no self-serve public API — it '
+                    'requires an active paid Naukri subscription plus an integration API key issued '
+                    'by your Naukri account manager/partnership team, entered here once obtained.')
+    supported_fields = {'title', 'description', 'company', 'department', 'location',
+                         'employment_type', 'application_url', 'requisition_id', 'job_reference_id'}
+    auth_fields = [
+        {'key': 'client_id', 'label': 'Naukri Client/Company ID', 'type': 'text', 'required': True},
+        {'key': 'api_key', 'label': 'Integration API Key', 'type': 'password', 'required': True},
+    ]
