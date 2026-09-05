@@ -213,7 +213,12 @@ export default function DashboardPage() {
                 </span>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{iv.candidate_name}</p>
-                  <p className="text-xs text-muted-foreground truncate">{(iv.type || '').replace('_', ' ')}{iv.job_title ? ` · ${iv.job_title}` : ''}</p>
+                  <p className="text-xs text-muted-foreground truncate capitalize">
+                    {(iv.type || 'interview').replace('_', ' ')}{iv.job_title ? ` · ${iv.job_title}` : ''}
+                  </p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {(iv.interviewer_names || []).join(', ') || 'No interviewer assigned'} · {iv.duration_min || 60} min
+                  </p>
                 </div>
                 <span className="text-xs text-muted-foreground font-mono shrink-0 text-right">
                   {iv.scheduled_at ? new Date(iv.scheduled_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : ''}<br />

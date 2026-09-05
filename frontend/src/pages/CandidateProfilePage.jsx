@@ -646,10 +646,33 @@ export default function CandidateProfilePage() {
               {cand.low_confidence_fields?.length > 0 && (
                 <Badge variant="outline" className="text-amber-700 border-amber-300 bg-amber-50">Needs review: {cand.low_confidence_fields.join(', ')}</Badge>
               )}
+              {(cand.tags || []).map((t) => <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>)}
             </div>
             <p className="text-sm text-muted-foreground mt-0.5">
               {cand.current_title || 'No title'}{cand.current_company ? ` at ${cand.current_company}` : ''} · applied {cand.applied_at ? new Date(cand.applied_at).toLocaleDateString() : '—'}
             </p>
+            <div className="flex items-center gap-4 flex-wrap mt-1.5 text-xs text-muted-foreground" data-testid="candidate-header-meta">
+              {cand.email && (
+                <a href={`mailto:${cand.email}`} className="flex items-center gap-1.5 hover:text-primary transition-colors" data-testid="candidate-header-email">
+                  <Mail className="h-3.5 w-3.5" /> {cand.email}
+                </a>
+              )}
+              {cand.phone && (
+                <a href={`tel:${cand.phone}`} className="flex items-center gap-1.5 hover:text-primary transition-colors" data-testid="candidate-header-phone">
+                  <Phone className="h-3.5 w-3.5" /> {cand.phone}
+                </a>
+              )}
+              {cand.location && (
+                <span className="flex items-center gap-1.5" data-testid="candidate-header-location">
+                  <MapPin className="h-3.5 w-3.5" /> {cand.location}
+                </span>
+              )}
+              {cand.recruiter?.name && (
+                <span className="flex items-center gap-1.5" data-testid="candidate-header-recruiter">
+                  <Star className="h-3.5 w-3.5" /> {cand.recruiter.name}
+                </span>
+              )}
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -707,16 +730,17 @@ export default function CandidateProfilePage() {
       <Tabs defaultValue="overview" className="w-full" data-testid="candidate-tabs">
         <TabsList className="bg-transparent border-b border-border rounded-none p-0 h-auto justify-start gap-6" data-testid="candidate-tabs-list">
           <TabsTrigger value="overview" className="rounded-none border-b-2 border-transparent px-1 pb-2.5 data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-primary data-[state=active]:text-primary" data-testid="candidate-tab-overview">Overview</TabsTrigger>
+          <TabsTrigger value="resume" className="rounded-none border-b-2 border-transparent px-1 pb-2.5 data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-primary data-[state=active]:text-primary" data-testid="candidate-tab-resume">Resume</TabsTrigger>
           <TabsTrigger value="feedback" className="rounded-none border-b-2 border-transparent px-1 pb-2.5 data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-primary data-[state=active]:text-primary" data-testid="candidate-tab-feedback">Interviews & Feedback</TabsTrigger>
           <TabsTrigger value="offer" className="rounded-none border-b-2 border-transparent px-1 pb-2.5 data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-primary data-[state=active]:text-primary" data-testid="candidate-tab-offer">Offer</TabsTrigger>
         </TabsList>
         <TabsContent value="overview" className="mt-4 space-y-5">
-        <div className="grid lg:grid-cols-3 gap-5">
-        {/* Left: details + resume */}
-        <div className="lg:col-span-2 space-y-5">
+        <div className="grid lg:grid-cols-12 gap-5">
+        {/* Left: About */}
+        <div className="lg:col-span-3 space-y-5">
           <Card className="shadow-none">
             <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
-              <CardTitle className="text-sm font-semibold">Contact & Details</CardTitle>
+              <CardTitle className="text-sm font-semibold">About</CardTitle>
               {isRecruiter && !editingDetails && (
                 <div className="flex items-center gap-1">
                   {isAdminPlus && cand.email && (
@@ -800,7 +824,7 @@ export default function CandidateProfilePage() {
                 </div>
               )}
             </CardHeader>
-            <CardContent className="grid sm:grid-cols-2 gap-3 text-sm">
+            <CardContent className="space-y-3 text-sm">
               {editingDetails ? (
                 <>
                   <div className="space-y-1">
@@ -844,9 +868,6 @@ export default function CandidateProfilePage() {
                 </>
               ) : (
                 <>
-                  <div className="flex items-center gap-2"><Mail className="h-4 w-4 text-muted-foreground" />{cand.email || <span className="text-muted-foreground">No email</span>}</div>
-                  <div className="flex items-center gap-2"><Phone className="h-4 w-4 text-muted-foreground" />{cand.phone || <span className="text-muted-foreground">No phone</span>}</div>
-                  <div className="flex items-center gap-2"><MapPin className="h-4 w-4 text-muted-foreground" />{cand.location || <span className="text-muted-foreground">No location</span>}</div>
                   <div className="flex items-center gap-2" data-testid="candidate-job-field">
                     <Briefcase className="h-4 w-4 text-muted-foreground shrink-0" />
                     {isRecruiter ? (
@@ -875,12 +896,7 @@ export default function CandidateProfilePage() {
                       <AutoExtractedBadge meta={cand.expected_compensation_meta} history={cand.expected_compensation_history} />
                     </div>
                   )}
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Tag className="h-4 w-4 text-muted-foreground" />
-                    {(cand.tags || []).length === 0 && <span className="text-muted-foreground">No tags</span>}
-                    {(cand.tags || []).map((t) => <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>)}
-                  </div>
-                  <div className="sm:col-span-2">
+                  <div>
                     <Separator className="my-2" />
                     <div className="flex items-start gap-2" data-testid="candidate-industries">
                       <Factory className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
@@ -890,18 +906,24 @@ export default function CandidateProfilePage() {
                       </div>
                     </div>
                   </div>
-                  {(cand.skills || []).length > 0 && (
-                    <div className="sm:col-span-2">
-                      <Separator className="my-2" />
-                      <div className="flex flex-wrap gap-1.5">
-                        {cand.skills.map((s) => <Badge key={s} variant="outline" className="text-xs">{s}</Badge>)}
-                      </div>
-                    </div>
-                  )}
                 </>
               )}
             </CardContent>
           </Card>
+        </div>
+
+        {/* Center: skills + job fit + experience + education */}
+        <div className="lg:col-span-6 space-y-5">
+          {(cand.skills || []).length > 0 && (
+            <Card className="shadow-none" data-testid="candidate-skills">
+              <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Skills</CardTitle></CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap gap-1.5">
+                  {cand.skills.map((s, i) => <Badge key={`${s}-${i}`} variant="outline" className="text-xs">{s}</Badge>)}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {cand.job_id && (
             <Card className="shadow-none" data-testid="candidate-fit-score">
@@ -909,14 +931,23 @@ export default function CandidateProfilePage() {
               <CardContent>
                 {cand.fit_score != null ? (
                   <div className="flex items-center gap-4">
-                    <div
-                      className={`flex items-center justify-center h-16 w-16 rounded-full border-[3px] font-display text-xl font-bold shrink-0 ${fitScoreStyle(cand.fit_score)}`}
-                      data-testid="candidate-fit-score-value"
-                    >
-                      {cand.fit_score}
+                    <div className="flex flex-col items-center gap-1 shrink-0">
+                      <div
+                        className={`flex items-center justify-center h-16 w-16 rounded-full border-[3px] font-display text-xl font-bold ${fitScoreStyle(cand.fit_score)}`}
+                        data-testid="candidate-fit-score-value"
+                      >
+                        {cand.fit_score}
+                      </div>
+                      <span className="text-[11px] font-medium text-muted-foreground">/100</span>
                     </div>
                     <div className="flex-1 min-w-0">
-                      {cand.fit_score_summary && <p className="text-sm">{cand.fit_score_summary}</p>}
+                      <p
+                        className={`text-sm font-semibold ${cand.fit_score >= 75 ? 'text-green-700' : cand.fit_score >= 50 ? 'text-amber-700' : 'text-red-700'}`}
+                        data-testid="candidate-fit-score-label"
+                      >
+                        {cand.fit_score >= 75 ? 'Strong fit' : cand.fit_score >= 50 ? 'Moderate fit' : 'Low fit'}
+                      </p>
+                      {cand.fit_score_summary && <p className="text-sm text-muted-foreground mt-0.5">{cand.fit_score_summary}</p>}
                       <p className="text-xs text-muted-foreground font-mono mt-1">
                         vs. {cand.job?.title || 'job'}{cand.fit_score_computed_at ? ` · scored ${new Date(cand.fit_score_computed_at).toLocaleString()}` : ''}
                       </p>
@@ -933,116 +964,40 @@ export default function CandidateProfilePage() {
             </Card>
           )}
 
-          {(cand.experience?.length > 0 || cand.education?.length > 0) && (
-            <Card className="shadow-none">
-              <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Background</CardTitle></CardHeader>
-              <CardContent className="space-y-4">
-                {cand.experience?.length > 0 && (
-                  <div className="space-y-2.5">
-                    {cand.experience.map((e, i) => (
-                      <div key={i} className="flex gap-3">
-                        <Building2 className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-                        <div>
-                          <div className="text-sm font-medium">{e.title} · {e.company}</div>
-                          <div className="text-xs text-muted-foreground font-mono">{e.start_date || '?'} – {e.end_date || '?'}</div>
-                          {e.description && <div className="text-xs text-muted-foreground mt-0.5">{e.description}</div>}
-                        </div>
-                      </div>
-                    ))}
+          {cand.experience?.length > 0 && (
+            <Card className="shadow-none" data-testid="candidate-experience">
+              <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Experience</CardTitle></CardHeader>
+              <CardContent className="space-y-2.5">
+                {cand.experience.map((e, i) => (
+                  <div key={i} className="flex gap-3">
+                    <Building2 className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                    <div>
+                      <div className="text-sm font-medium">{e.title} · {e.company}</div>
+                      <div className="text-xs text-muted-foreground font-mono">{e.start_date || '?'} – {e.end_date || '?'}</div>
+                      {e.description && <div className="text-xs text-muted-foreground mt-0.5">{e.description}</div>}
+                    </div>
                   </div>
-                )}
-                {cand.education?.length > 0 && (
-                  <div className="space-y-2.5">
-                    {cand.education.map((e, i) => (
-                      <div key={i} className="flex gap-3">
-                        <GraduationCap className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-                        <div>
-                          <div className="text-sm font-medium">{e.degree ? `${e.degree} · ` : ''}{e.school}</div>
-                          <div className="text-xs text-muted-foreground font-mono">{e.start_date || '?'} – {e.end_date || '?'}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                ))}
               </CardContent>
             </Card>
           )}
 
-          {/* Resume preview */}
-          <Card className="shadow-none" data-testid="candidate-resume-preview">
-            <CardHeader className="pb-2 flex-row items-center justify-between space-y-0">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2"><FileText className="h-4 w-4" /> Resume</CardTitle>
-              <div className="flex items-center gap-2">
-                {cand.resume_file_id && !isMobileViewport && (resumeType === 'pdf' || resumeType === 'docx') && (
-                  <Button size="sm" variant="outline" onClick={() => setResumeExpandOpen(true)} data-testid="candidate-resume-expand-button">
-                    <Maximize2 className="h-4 w-4 mr-1" /> Expand
-                  </Button>
-                )}
-                {cand.resume_file_id && (
-                  <Button size="sm" variant="outline" onClick={downloadResume} data-testid="candidate-resume-download">
-                    <Download className="h-4 w-4 mr-1" /> Download
-                  </Button>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent>
-              {!cand.resume_file_id && <p className="text-sm text-muted-foreground py-4 text-center">No resume on file for this candidate.</p>}
-              {resumeType === 'loading' && <p className="text-sm text-muted-foreground py-4 text-center">Loading preview...</p>}
-              {resumeType === 'error' && <p className="text-sm text-destructive py-4 text-center">Could not load resume preview. Try downloading instead.</p>}
-
-              {/* Mobile: iframe/docx-preview does NOT work reliably on iOS Safari
-                  and most Android browsers — show a big tap-friendly card
-                  instead that hands the file off to the native viewer. */}
-              {isMobileViewport && cand.resume_file_id && resumeUrl && (resumeType === 'pdf' || resumeType === 'docx' || resumeType === 'unsupported') && (
-                <div
-                  className="w-full rounded-lg border border-border bg-secondary/30 p-6 flex flex-col items-center justify-center gap-3 text-center"
-                  data-testid="candidate-resume-mobile-open"
-                >
-                  <FileText className="h-10 w-10 text-muted-foreground" />
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium">{resumeFilename || 'Resume'}</p>
-                    <p className="text-xs text-muted-foreground">Mobile browsers can’t preview {resumeType === 'docx' ? 'Word documents' : 'PDFs'} inline. Tap below to open with your device viewer.</p>
+          {cand.education?.length > 0 && (
+            <Card className="shadow-none" data-testid="candidate-education">
+              <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Education</CardTitle></CardHeader>
+              <CardContent className="space-y-2.5">
+                {cand.education.map((e, i) => (
+                  <div key={i} className="flex gap-3">
+                    <GraduationCap className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                    <div>
+                      <div className="text-sm font-medium">{e.degree ? `${e.degree} · ` : ''}{e.school}</div>
+                      <div className="text-xs text-muted-foreground font-mono">{e.start_date || '?'} – {e.end_date || '?'}</div>
+                    </div>
                   </div>
-                  <div className="flex flex-col sm:flex-row gap-2 w-full max-w-xs pt-1">
-                    <Button
-                      className="w-full"
-                      onClick={() => window.open(resumeUrl, '_blank', 'noopener,noreferrer')}
-                      data-testid="candidate-resume-open-button"
-                    >
-                      <ExternalLink className="h-4 w-4 mr-1.5" /> Open Resume
-                    </Button>
-                    <Button
-                      variant="outline"
-                      className="w-full"
-                      onClick={downloadResume}
-                      data-testid="candidate-resume-mobile-download-button"
-                    >
-                      <Download className="h-4 w-4 mr-1.5" /> Download
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {/* Desktop: keep the existing inline previews */}
-              {!isMobileViewport && resumeType === 'pdf' && resumeUrl && (
-                <iframe title="Resume preview" src={resumeUrl} className="w-full h-[720px] rounded-lg border border-border bg-white" />
-              )}
-              {!isMobileViewport && (resumeType === 'docx' || resumeType === 'docx-error') && (
-                <div
-                  ref={docxContainerRef}
-                  data-testid="candidate-resume-docx-preview"
-                  className="docx-preview-wrapper w-full h-[720px] overflow-auto rounded-lg border border-border bg-white p-4 text-black"
-                >
-                  {resumeType === 'docx-error' && (
-                    <p className="text-sm text-destructive py-4 text-center">Could not render this Word document. Try downloading instead.</p>
-                  )}
-                </div>
-              )}
-              {!isMobileViewport && resumeType === 'unsupported' && (
-                <p className="text-sm text-muted-foreground py-4 text-center">Preview is not available for this file type — use Download instead.</p>
-              )}
-            </CardContent>
-          </Card>
+                ))}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Scorecards */}
           {scorecards.length > 0 && (
@@ -1073,7 +1028,7 @@ export default function CandidateProfilePage() {
         </div>
 
         {/* Right: pipeline status + upcoming interviews + notes + timeline */}
-        <div className="space-y-5">
+        <div className="lg:col-span-3 space-y-5">
           {stages.filter((s) => s !== 'Rejected').length > 1 && cand.status !== 'rejected' && (
             <Card className="shadow-none" data-testid="candidate-pipeline-status">
               <CardHeader className="pb-2">
@@ -1176,6 +1131,82 @@ export default function CandidateProfilePage() {
           </CardContent>
         </Card>
       )}
+        </TabsContent>
+        <TabsContent value="resume" forceMount className="mt-4 data-[state=inactive]:hidden">
+          <Card className="shadow-none" data-testid="candidate-resume-preview">
+            <CardHeader className="pb-2 flex-row items-center justify-between space-y-0">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2"><FileText className="h-4 w-4" /> Resume</CardTitle>
+              <div className="flex items-center gap-2">
+                {cand.resume_file_id && !isMobileViewport && (resumeType === 'pdf' || resumeType === 'docx') && (
+                  <Button size="sm" variant="outline" onClick={() => setResumeExpandOpen(true)} data-testid="candidate-resume-expand-button">
+                    <Maximize2 className="h-4 w-4 mr-1" /> Expand
+                  </Button>
+                )}
+                {cand.resume_file_id && (
+                  <Button size="sm" variant="outline" onClick={downloadResume} data-testid="candidate-resume-download">
+                    <Download className="h-4 w-4 mr-1" /> Download
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              {!cand.resume_file_id && <p className="text-sm text-muted-foreground py-4 text-center">No resume on file for this candidate.</p>}
+              {resumeType === 'loading' && <p className="text-sm text-muted-foreground py-4 text-center">Loading preview...</p>}
+              {resumeType === 'error' && <p className="text-sm text-destructive py-4 text-center">Could not load resume preview. Try downloading instead.</p>}
+
+              {/* Mobile: iframe/docx-preview does NOT work reliably on iOS Safari
+                  and most Android browsers — show a big tap-friendly card
+                  instead that hands the file off to the native viewer. */}
+              {isMobileViewport && cand.resume_file_id && resumeUrl && (resumeType === 'pdf' || resumeType === 'docx' || resumeType === 'unsupported') && (
+                <div
+                  className="w-full rounded-lg border border-border bg-secondary/30 p-6 flex flex-col items-center justify-center gap-3 text-center"
+                  data-testid="candidate-resume-mobile-open"
+                >
+                  <FileText className="h-10 w-10 text-muted-foreground" />
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">{resumeFilename || 'Resume'}</p>
+                    <p className="text-xs text-muted-foreground">Mobile browsers can’t preview {resumeType === 'docx' ? 'Word documents' : 'PDFs'} inline. Tap below to open with your device viewer.</p>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2 w-full max-w-xs pt-1">
+                    <Button
+                      className="w-full"
+                      onClick={() => window.open(resumeUrl, '_blank', 'noopener,noreferrer')}
+                      data-testid="candidate-resume-open-button"
+                    >
+                      <ExternalLink className="h-4 w-4 mr-1.5" /> Open Resume
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={downloadResume}
+                      data-testid="candidate-resume-mobile-download-button"
+                    >
+                      <Download className="h-4 w-4 mr-1.5" /> Download
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Desktop: keep the existing inline previews */}
+              {!isMobileViewport && resumeType === 'pdf' && resumeUrl && (
+                <iframe title="Resume preview" src={resumeUrl} className="w-full h-[720px] rounded-lg border border-border bg-white" />
+              )}
+              {!isMobileViewport && (resumeType === 'docx' || resumeType === 'docx-error') && (
+                <div
+                  ref={docxContainerRef}
+                  data-testid="candidate-resume-docx-preview"
+                  className="docx-preview-wrapper w-full h-[720px] overflow-auto rounded-lg border border-border bg-white p-4 text-black"
+                >
+                  {resumeType === 'docx-error' && (
+                    <p className="text-sm text-destructive py-4 text-center">Could not render this Word document. Try downloading instead.</p>
+                  )}
+                </div>
+              )}
+              {!isMobileViewport && resumeType === 'unsupported' && (
+                <p className="text-sm text-muted-foreground py-4 text-center">Preview is not available for this file type — use Download instead.</p>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
         <TabsContent value="feedback" className="mt-4">
           <RoundFeedbackSection
