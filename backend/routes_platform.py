@@ -19,6 +19,12 @@ from ai_settings import (
     test_connection,
     upsert_tenant_ai_settings,
 )
+from google_oauth_settings import (
+    delete_tenant_google_settings,
+    get_tenant_google_settings,
+    public_google_settings,
+    upsert_tenant_google_settings,
+)
 from tenant_context import GLOBAL_COLLECTIONS
 from tenant_provision import provision_tenant_defaults
 from tenants import (
@@ -77,6 +83,12 @@ class TenantAITest(BaseModel):
     api_key: Optional[str] = None
 
 
+class TenantGoogleSettings(BaseModel):
+    client_id: str = Field(min_length=1)
+    # Empty / omitted client_secret on PUT means "keep the secret already on file".
+    client_secret: Optional[str] = None
+
+
 @router.post('/login')
 async def platform_login(body: PlatformLogin):
     admin = await raw_db.platform_admins.find_one({'email': body.email.lower()})
@@ -128,6 +140,7 @@ async def _tenant_row(t: dict) -> dict:
     row['counts'] = counts
     row['created_at'] = t.get('created_at')
     row['ai'] = await public_ai_settings(t['id'])
+    row['google'] = await public_google_settings(t['id'])
     return row
 
 
@@ -287,3 +300,42 @@ async def test_tenant_ai(tenant_id: str, body: TenantAITest, admin: dict = Depen
         return {'ok': False, 'message': 'No API key to test — enter one first.'}
     ok, message = await test_connection(body.provider, (body.model or '').strip() or None, key)
     return {'ok': ok, 'message': message}
+
+
+# ----------------------------------------------------------------------------
+# Per-tenant Google OAuth (Calendar + Gmail) client (control-panel only)
+# ----------------------------------------------------------------------------
+@router.get('/tenants/{tenant_id}/google')
+async def get_tenant_google(tenant_id: str, admin: dict = Depends(get_platform_admin)):
+    t = await get_tenant(tenant_id)
+    if not t:
+        raise HTTPException(status_code=404, detail='Tenant not found')
+    return await public_google_settings(tenant_id)
+
+
+@router.put('/tenants/{tenant_id}/google')
+async def set_tenant_google(tenant_id: str, body: TenantGoogleSettings, admin: dict = Depends(get_platform_admin)):
+    t = await get_tenant(tenant_id)
+    if not t:
+        raise HTTPException(status_code=404, detail='Tenant not found')
+    existing = await get_tenant_google_settings(tenant_id)
+    secret = (body.client_secret or '').strip()
+    if not secret and existing and existing.get('client_secret_encrypted'):
+        # No new secret typed — keep the encrypted one already on file by
+        # passing a sentinel through upsert would double-encrypt it, so
+        # short-circuit and only patch client_id instead.
+        from crypto_utils import decrypt_str
+        secret = decrypt_str(existing['client_secret_encrypted'])
+    await upsert_tenant_google_settings(tenant_id, body.client_id.strip(), secret, admin['email'])
+    logger.info('Platform owner %s set Google OAuth client for tenant %s', admin['email'], t['slug'])
+    return await public_google_settings(tenant_id)
+
+
+@router.delete('/tenants/{tenant_id}/google')
+async def clear_tenant_google(tenant_id: str, admin: dict = Depends(get_platform_admin)):
+    t = await get_tenant(tenant_id)
+    if not t:
+        raise HTTPException(status_code=404, detail='Tenant not found')
+    await delete_tenant_google_settings(tenant_id)
+    logger.info('Platform owner %s cleared Google OAuth client for tenant %s', admin['email'], t['slug'])
+    return {'ok': True}

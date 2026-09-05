@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   Trash2,
   Users,
+  CalendarClock,
   Zap,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -63,6 +64,12 @@ export default function PlatformDashboardPage() {
   const [aiExisting, setAiExisting] = useState(null);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiTesting, setAiTesting] = useState(false);
+
+  // Per-tenant Google Calendar/Gmail OAuth client
+  const [googleTenant, setGoogleTenant] = useState(null);
+  const [googleForm, setGoogleForm] = useState({ client_id: '', client_secret: '' });
+  const [googleExisting, setGoogleExisting] = useState(null);
+  const [googleBusy, setGoogleBusy] = useState(false);
 
   const admin = (() => {
     try {
@@ -164,6 +171,51 @@ export default function PlatformDashboardPage() {
       toast.error(errMsg(e, 'Could not remove AI settings'));
     } finally {
       setAiBusy(false);
+    }
+  };
+
+  const openGoogle = (t) => {
+    setGoogleTenant(t);
+    setGoogleExisting(t.google || null);
+    setGoogleForm({ client_id: t.google?.client_id || '', client_secret: '' });
+  };
+
+  const saveGoogle = async () => {
+    if (!googleForm.client_id.trim()) {
+      toast.error('Client ID is required');
+      return;
+    }
+    setGoogleBusy(true);
+    try {
+      const r = await platformApi.put(`/platform/tenants/${googleTenant.id}/google`, {
+        client_id: googleForm.client_id.trim(),
+        client_secret: googleForm.client_secret,
+      });
+      toast.success(`Google OAuth client saved for ${googleTenant.name}`);
+      setTenants((prev) => prev.map((x) => (x.id === googleTenant.id ? { ...x, google: r.data } : x)));
+      setGoogleTenant(null);
+    } catch (e) {
+      toast.error(errMsg(e, 'Could not save Google OAuth settings'));
+    } finally {
+      setGoogleBusy(false);
+    }
+  };
+
+  const clearGoogle = async () => {
+    setGoogleBusy(true);
+    try {
+      await platformApi.delete(`/platform/tenants/${googleTenant.id}/google`);
+      toast.success(`Google OAuth client removed for ${googleTenant.name}`);
+      setTenants((prev) =>
+        prev.map((x) =>
+          x.id === googleTenant.id ? { ...x, google: { configured: false, client_id: null, has_secret: false } } : x,
+        ),
+      );
+      setGoogleTenant(null);
+    } catch (e) {
+      toast.error(errMsg(e, 'Could not remove Google OAuth settings'));
+    } finally {
+      setGoogleBusy(false);
     }
   };
 
@@ -373,6 +425,21 @@ export default function PlatformDashboardPage() {
                       No AI key
                     </Badge>
                   )}
+                  {t.google?.configured ? (
+                    <Badge
+                      className="bg-sky-500/15 text-sky-300 border border-sky-500/30"
+                      data-testid={`tenant-google-${t.slug}`}
+                    >
+                      <CalendarClock className="h-3 w-3 mr-1" /> Google connected
+                    </Badge>
+                  ) : (
+                    <Badge
+                      className="bg-slate-800 text-slate-500 border border-slate-700"
+                      data-testid={`tenant-google-${t.slug}`}
+                    >
+                      No Google OAuth
+                    </Badge>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -384,6 +451,15 @@ export default function PlatformDashboardPage() {
                     data-testid={`ai-config-${t.slug}`}
                   >
                     <Cpu className="h-4 w-4 mr-1" /> AI
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-slate-700 bg-transparent text-slate-200 hover:bg-slate-800"
+                    onClick={() => openGoogle(t)}
+                    data-testid={`google-config-${t.slug}`}
+                  >
+                    <CalendarClock className="h-4 w-4 mr-1" /> Google
                   </Button>
                   <Button
                     variant="outline"
@@ -628,6 +704,72 @@ export default function PlatformDashboardPage() {
                 {aiBusy ? 'Saving…' : 'Save'}
               </Button>
             </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Per-tenant Google OAuth client */}
+      <Dialog open={!!googleTenant} onOpenChange={(o) => !o && setGoogleTenant(null)}>
+        <DialogContent className="sm:max-w-lg" data-testid="google-config-dialog">
+          <DialogHeader>
+            <DialogTitle>Google Calendar OAuth — {googleTenant?.name}</DialogTitle>
+            <DialogDescription>
+              Register this workspace&apos;s own Google Cloud OAuth client for Calendar sync,
+              Meet links and Gmail reply scanning. Leave unset to keep using the deployment&apos;s
+              default Google app.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-lg bg-muted p-3 text-xs space-y-1">
+              <p className="text-muted-foreground">Authorized redirect URI (add this in Google Cloud Console):</p>
+              <p className="font-mono break-all" data-testid="google-redirect-uri">{origin}/api/oauth/calendar/callback</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="google-client-id">Client ID</Label>
+              <Input
+                id="google-client-id"
+                data-testid="google-client-id-input"
+                value={googleForm.client_id}
+                onChange={(e) => setGoogleForm({ ...googleForm, client_id: e.target.value })}
+                placeholder="1234567890-abc.apps.googleusercontent.com"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="google-client-secret">Client secret</Label>
+              <Input
+                id="google-client-secret"
+                type="password"
+                data-testid="google-client-secret-input"
+                value={googleForm.client_secret}
+                onChange={(e) => setGoogleForm({ ...googleForm, client_secret: e.target.value })}
+                placeholder={
+                  googleExisting?.has_secret
+                    ? 'Saved — leave blank to keep the existing secret'
+                    : 'Paste the OAuth client secret'
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                Encrypted at rest and never shown again in full. Leave blank to keep the existing secret.
+              </p>
+            </div>
+          </div>
+          <DialogFooter className="flex-col-reverse sm:flex-row sm:justify-between gap-2">
+            <div>
+              {googleExisting?.configured && (
+                <Button
+                  variant="ghost"
+                  className="text-rose-500 hover:text-rose-400 hover:bg-rose-500/10"
+                  onClick={clearGoogle}
+                  disabled={googleBusy}
+                  data-testid="google-clear-button"
+                >
+                  Remove
+                </Button>
+              )}
+            </div>
+            <Button onClick={saveGoogle} disabled={googleBusy} data-testid="google-save-button">
+              {googleBusy ? 'Saving…' : 'Save'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

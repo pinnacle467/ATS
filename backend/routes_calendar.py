@@ -7,8 +7,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import RedirectResponse
 
 from auth import get_current_user
-from database import db
+from database import db, raw_db
 from google_calendar import authorization_url, exchange_code, get_credentials_for_user, get_userinfo, list_events
+from google_oauth_settings import resolve_google_credentials
+from tenant_context import tenant_scope
 from utils import clean, log_activity, new_id, notify, now_iso
 
 router = APIRouter(tags=['calendar'])
@@ -42,7 +44,8 @@ async def google_login(return_to: str = '/interviews', user: dict = Depends(get_
     if not isinstance(return_to, str) or not return_to.startswith('/') or return_to.startswith('//'):
         return_to = '/interviews'
     state = f"{user['id']}|{return_to}"
-    return {'authorization_url': authorization_url(state=state)}
+    client_id, _ = await resolve_google_credentials(user.get('tenant_id'))
+    return {'authorization_url': authorization_url(state=state, client_id=client_id)}
 
 
 @router.get('/oauth/calendar/callback')
@@ -60,17 +63,27 @@ async def google_callback(code: str = None, state: str = None, error: str = None
     if error or not code or not user_id:
         logger.error(f'Google calendar callback missing code/state, error={error}')
         return RedirectResponse(f'{APP_BASE_URL}{return_to}?calendar=error')
-    try:
-        tokens = exchange_code(code)
-        info = get_userinfo(tokens['access_token'])
-    except Exception:
-        logger.exception('Google calendar token exchange failed')
+    # This is a bare browser redirect from Google — no JWT, so no tenant is
+    # resolved yet. Look the user up unscoped to find their tenant, then
+    # open a tenant_scope for the rest of the flow (needed for the db.users
+    # write below, since `users` isn't a global collection).
+    user_doc = await raw_db.users.find_one({'id': user_id}, {'_id': 0})
+    if not user_doc:
+        logger.error(f'Google calendar callback: unknown user_id={user_id}')
         return RedirectResponse(f'{APP_BASE_URL}{return_to}?calendar=error')
-    await db.users.update_one({'id': user_id}, {'$set': {
-        'google_tokens': tokens,
-        'google_calendar_email': info.get('email'),
-        'google_calendar_connected_at': now_iso(),
-    }})
+    with tenant_scope(user_doc.get('tenant_id')):
+        try:
+            client_id, client_secret = await resolve_google_credentials(user_doc.get('tenant_id'))
+            tokens = exchange_code(code, client_id, client_secret)
+            info = get_userinfo(tokens['access_token'])
+        except Exception:
+            logger.exception('Google calendar token exchange failed')
+            return RedirectResponse(f'{APP_BASE_URL}{return_to}?calendar=error')
+        await db.users.update_one({'id': user_id}, {'$set': {
+            'google_tokens': tokens,
+            'google_calendar_email': info.get('email'),
+            'google_calendar_connected_at': now_iso(),
+        }})
     return RedirectResponse(f'{APP_BASE_URL}{return_to}?calendar=connected')
 
 

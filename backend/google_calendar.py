@@ -8,8 +8,6 @@ from googleapiclient.discovery import build
 
 from database import db
 
-CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')
-CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', '')
 REDIRECT_URI = f"{os.environ.get('APP_BASE_URL', '')}/api/oauth/calendar/callback"
 SCOPES = ['https://www.googleapis.com/auth/calendar', 'https://www.googleapis.com/auth/gmail.send',
           'https://www.googleapis.com/auth/gmail.readonly',
@@ -20,9 +18,9 @@ AUTH_URI = 'https://accounts.google.com/o/oauth2/v2/auth'
 TOKEN_URI = 'https://oauth2.googleapis.com/token'
 
 
-def authorization_url(state: str) -> str:
+def authorization_url(state: str, client_id: str) -> str:
     params = {
-        'client_id': CLIENT_ID,
+        'client_id': client_id,
         'redirect_uri': REDIRECT_URI,
         'response_type': 'code',
         'scope': ' '.join(SCOPES),
@@ -33,11 +31,11 @@ def authorization_url(state: str) -> str:
     return AUTH_URI + '?' + '&'.join(f'{k}={requests.utils.quote(v)}' for k, v in params.items())
 
 
-def exchange_code(code: str) -> dict:
+def exchange_code(code: str, client_id: str, client_secret: str) -> dict:
     resp = requests.post(TOKEN_URI, data={
         'code': code,
-        'client_id': CLIENT_ID,
-        'client_secret': CLIENT_SECRET,
+        'client_id': client_id,
+        'client_secret': client_secret,
         'redirect_uri': REDIRECT_URI,
         'grant_type': 'authorization_code',
     })
@@ -55,6 +53,8 @@ async def get_credentials_for_user(user_doc: dict) -> Credentials | None:
     tokens = user_doc.get('google_tokens')
     if not tokens:
         return None
+    from google_oauth_settings import resolve_google_credentials
+    client_id, client_secret = await resolve_google_credentials(user_doc.get('tenant_id'))
     # When refreshing, pass ONLY the scopes actually granted with this token
     # (from Google's token response's `scope` field). Passing our updated
     # global SCOPES here would trigger `invalid_scope` if we've added scopes
@@ -66,8 +66,8 @@ async def get_credentials_for_user(user_doc: dict) -> Credentials | None:
         token=tokens.get('access_token'),
         refresh_token=tokens.get('refresh_token'),
         token_uri=TOKEN_URI,
-        client_id=CLIENT_ID,
-        client_secret=CLIENT_SECRET,
+        client_id=client_id,
+        client_secret=client_secret,
         scopes=granted_scopes,
     )
     if creds.expired and creds.refresh_token:
