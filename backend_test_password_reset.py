@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from pymongo import MongoClient
 
 # Configuration
-BASE_URL = "https://recruit-full-load.preview.emergentagent.com/api"
+BASE_URL = "https://ats-full-build-2.preview.emergentagent.com/api"
 MONGO_URL = "mongodb://localhost:27017"
 DB_NAME = "sprout_ats"
 
