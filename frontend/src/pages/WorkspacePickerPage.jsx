@@ -38,7 +38,7 @@ export default function WorkspacePickerPage() {
         <div className="flex items-center gap-3 mb-8">
           <PinnacleLogo size={40} />
           <div>
-            <div className="font-display font-bold text-xl tracking-tight">Pinnacle ATS</div>
+            <div className="font-display font-bold text-xl tracking-tight">HireFlow</div>
             <div className="text-xs text-muted-foreground">Multi-workspace applicant tracking</div>
           </div>
         </div>

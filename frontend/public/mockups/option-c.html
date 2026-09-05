@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Option C — Glass & Gradient</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  body{font-family:'Plus Jakarta Sans',ui-sans-serif,system-ui;color:#0F172A;-webkit-font-smoothing:antialiased;
+    background:
+      radial-gradient(1200px 600px at 10% -10%, rgba(16,185,129,.35), transparent 60%),
+      radial-gradient(900px 500px at 90% 0%, rgba(20,184,166,.30), transparent 60%),
+      radial-gradient(800px 600px at 60% 110%, rgba(99,102,241,.18), transparent 60%),
+      linear-gradient(180deg,#F1F7F5 0%,#EEF2F7 100%);}
+  .glass{background:rgba(255,255,255,.62);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border:1px solid rgba(255,255,255,.7);box-shadow:0 10px 30px -12px rgba(2,44,34,.18), inset 0 1px 0 rgba(255,255,255,.8)}
+  .glass-dark{background:linear-gradient(160deg,#064E3B,#0F766E 60%,#115E59);color:#fff;box-shadow:0 20px 40px -16px rgba(6,78,59,.5)}
+  .grad-text{background:linear-gradient(90deg,#059669,#0D9488);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .ring-fit{background:conic-gradient(from -90deg,#10B981 var(--p),rgba(15,23,42,.08) 0)}
+</style>
+</head>
+<body class="h-screen overflow-hidden flex text-[14px] p-3 gap-3">
+<aside class="w-[240px] shrink-0 glass rounded-3xl flex flex-col p-3">
+  <div class="flex items-center gap-2.5 px-2 py-2">
+    <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white font-extrabold flex items-center justify-center shadow-lg shadow-emerald-500/30">P</div>
+    <div class="leading-tight"><div class="font-bold">Context66 Data</div><div class="text-[11px] text-slate-500">Enterprise plan</div></div>
+  </div>
+  <nav class="mt-3 space-y-1 text-slate-600 font-medium">
+    <a class="flex items-center gap-3 h-10 px-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-500/30"><i data-lucide="layout-dashboard" class="w-[18px] h-[18px]"></i>Dashboard</a>
+    <a class="flex items-center gap-3 h-10 px-3 rounded-2xl hover:bg-white/70"><i data-lucide="users" class="w-[18px] h-[18px]"></i>Candidates<span class="ml-auto text-[11px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">167</span></a>
+    <a class="flex items-center gap-3 h-10 px-3 rounded-2xl hover:bg-white/70"><i data-lucide="briefcase" class="w-[18px] h-[18px]"></i>Jobs</a>
+    <a class="flex items-center gap-3 h-10 px-3 rounded-2xl hover:bg-white/70"><i data-lucide="calendar" class="w-[18px] h-[18px]"></i>Interviews</a>
+    <a class="flex items-center gap-3 h-10 px-3 rounded-2xl hover:bg-white/70"><i data-lucide="link-2" class="w-[18px] h-[18px]"></i>Scheduling</a>
+    <a class="flex items-center gap-3 h-10 px-3 rounded-2xl hover:bg-white/70"><i data-lucide="file-signature" class="w-[18px] h-[18px]"></i>Offers</a>
+    <a class="flex items-center gap-3 h-10 px-3 rounded-2xl hover:bg-white/70"><i data-lucide="settings" class="w-[18px] h-[18px]"></i>Admin</a>
+  </nav>
+  <div class="px-3 pt-5 pb-2 text-[10.5px] uppercase tracking-[0.1em] text-slate-400 font-semibold">Career portal</div>
+  <nav class="space-y-1 text-slate-600 font-medium">
+    <a class="flex items-center gap-3 h-10 px-3 rounded-2xl hover:bg-white/70"><i data-lucide="globe" class="w-[18px] h-[18px]"></i>Portal</a>
+    <a class="flex items-center gap-3 h-10 px-3 rounded-2xl hover:bg-white/70"><i data-lucide="bar-chart-3" class="w-[18px] h-[18px]"></i>Analytics</a>
+  </nav>
+  <div class="mt-auto glass-dark rounded-2xl p-4">
+    <div class="text-[12px] opacity-80">AI credits this month</div>
+    <div class="text-2xl font-extrabold mt-1">1,240 <span class="text-sm font-medium opacity-70">/ 5,000</span></div>
+    <div class="h-1.5 rounded-full bg-white/20 mt-3"><div class="h-full w-1/4 rounded-full bg-white"></div></div>
+  </div>
+</aside>
+
+<main class="flex-1 min-w-0 flex flex-col gap-3">
+  <header class="glass rounded-3xl h-14 px-5 flex items-center gap-3">
+    <div class="h-9 w-80 rounded-full bg-white/70 ring-1 ring-white px-3.5 flex items-center gap-2 text-slate-400"><i data-lucide="search" class="w-4 h-4"></i>Search candidates, jobs…<span class="ml-auto text-[10px] px-1.5 rounded bg-slate-100 text-slate-500">⌘K</span></div>
+    <div class="ml-auto flex items-center gap-2">
+      <button class="h-9 px-3.5 rounded-full bg-white/70 ring-1 ring-white text-slate-600 font-medium">All jobs ▾</button>
+      <button class="h-9 w-9 rounded-full bg-white/70 ring-1 ring-white text-slate-600 flex items-center justify-center relative"><i data-lucide="bell" class="w-4 h-4"></i><span class="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-rose-500 text-white text-[9px] flex items-center justify-center">8</span></button>
+      <button class="h-9 px-4 rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-semibold shadow-lg shadow-emerald-500/30 flex items-center gap-2"><i data-lucide="sparkles" class="w-4 h-4"></i>Add candidate</button>
+      <div class="w-9 h-9 rounded-full bg-gradient-to-br from-amber-300 to-rose-400 ring-2 ring-white text-white text-xs font-bold flex items-center justify-center">AK</div>
+    </div>
+  </header>
+
+  <div class="flex-1 overflow-auto pr-1">
+    <!-- Hero -->
+    <section class="glass-dark rounded-3xl p-6 relative overflow-hidden">
+      <div class="absolute -right-10 -top-10 w-64 h-64 rounded-full bg-white/10 blur-2xl"></div>
+      <div class="absolute right-40 -bottom-20 w-72 h-72 rounded-full bg-teal-300/20 blur-3xl"></div>
+      <div class="relative flex items-center">
+        <div><div class="text-emerald-100/80 text-[13px] font-medium">Friday, 5 September</div><h1 class="text-[30px] font-extrabold tracking-tight mt-1">Good evening, Abhijeet ✨</h1><p class="text-emerald-50/80 mt-1.5 max-w-xl">14 new candidates this week, 2 scorecards waiting on you, and 1 offer expiring in 4 days.</p></div>
+        <div class="ml-auto flex gap-3">
+          <div class="bg-white/15 backdrop-blur rounded-2xl px-4 py-3 ring-1 ring-white/20"><div class="text-[11px] opacity-80">AI fit scored</div><div class="text-xl font-bold">399 / 400</div></div>
+          <div class="bg-white/15 backdrop-blur rounded-2xl px-4 py-3 ring-1 ring-white/20"><div class="text-[11px] opacity-80">Resumes parsed</div><div class="text-xl font-bold">280</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- KPI cards with sparklines -->
+    <div class="grid grid-cols-5 gap-3 mt-3">
+      <div class="glass rounded-3xl p-4"><div class="flex items-center justify-between text-slate-500 text-[12px]">Open roles<span class="w-7 h-7 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center"><i data-lucide="briefcase" class="w-3.5 h-3.5"></i></span></div><div class="text-[30px] font-extrabold tracking-tight mt-1">9</div><svg viewBox="0 0 100 28" class="w-full h-7 mt-1"><defs><linearGradient id="g1" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#10B981" stop-opacity=".5"/><stop offset="1" stop-color="#10B981" stop-opacity="0"/></linearGradient></defs><path d="M0 22 L15 18 L30 20 L45 12 L60 14 L75 8 L100 4 V28 H0 Z" fill="url(#g1)"/><path d="M0 22 L15 18 L30 20 L45 12 L60 14 L75 8 L100 4" fill="none" stroke="#059669" stroke-width="2"/></svg></div>
+      <div class="glass rounded-3xl p-4"><div class="flex items-center justify-between text-slate-500 text-[12px]">Active candidates<span class="w-7 h-7 rounded-xl bg-teal-100 text-teal-700 flex items-center justify-center"><i data-lucide="users" class="w-3.5 h-3.5"></i></span></div><div class="text-[30px] font-extrabold tracking-tight mt-1">167</div><svg viewBox="0 0 100 28" class="w-full h-7 mt-1"><path d="M0 24 L20 20 L40 21 L60 10 L80 12 L100 3 V28 H0 Z" fill="url(#g1)"/><path d="M0 24 L20 20 L40 21 L60 10 L80 12 L100 3" fill="none" stroke="#0D9488" stroke-width="2"/></svg></div>
+      <div class="glass rounded-3xl p-4"><div class="flex items-center justify-between text-slate-500 text-[12px]">Interviews this week<span class="w-7 h-7 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center"><i data-lucide="calendar" class="w-3.5 h-3.5"></i></span></div><div class="text-[30px] font-extrabold tracking-tight mt-1">0</div><svg viewBox="0 0 100 28" class="w-full h-7 mt-1"><path d="M0 8 L20 12 L40 10 L60 18 L80 20 L100 24" fill="none" stroke="#6366F1" stroke-width="2"/></svg></div>
+      <div class="glass rounded-3xl p-4"><div class="flex items-center justify-between text-slate-500 text-[12px]">Offers pending<span class="w-7 h-7 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center"><i data-lucide="file-signature" class="w-3.5 h-3.5"></i></span></div><div class="text-[30px] font-extrabold tracking-tight mt-1">1</div><div class="text-[12px] text-amber-600 font-medium mt-2">Expires in 4 days</div></div>
+      <div class="glass rounded-3xl p-4"><div class="flex items-center justify-between text-slate-500 text-[12px]">Avg. time to hire<span class="w-7 h-7 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center"><i data-lucide="clock" class="w-3.5 h-3.5"></i></span></div><div class="text-[30px] font-extrabold tracking-tight mt-1">11.5<span class="text-lg text-slate-400">d</span></div><div class="text-[12px] text-emerald-600 font-medium mt-2">↓ 1.2d vs last quarter</div></div>
+    </div>
+
+    <div class="grid grid-cols-3 gap-3 mt-3">
+      <section class="col-span-2 glass rounded-3xl p-5">
+        <div class="flex items-center"><h2 class="font-bold text-[16px]">Pipeline snapshot</h2><div class="ml-auto flex gap-1 text-[12px] bg-white/70 rounded-full p-0.5 ring-1 ring-white"><button class="px-3 py-1 rounded-full bg-slate-900 text-white">Stages</button><button class="px-3 py-1 rounded-full text-slate-500">Trend</button></div></div>
+        <div class="grid grid-cols-5 gap-4 items-end h-44 mt-4">
+          <div class="flex flex-col justify-end h-full"><div class="text-[12px] font-semibold mb-1.5">103</div><div class="rounded-2xl bg-gradient-to-t from-emerald-600 to-emerald-400 shadow-lg shadow-emerald-500/30" style="height:85%"></div></div>
+          <div class="flex flex-col justify-end h-full"><div class="text-[12px] font-semibold mb-1.5">32</div><div class="rounded-2xl bg-gradient-to-t from-teal-600 to-teal-400 shadow-lg shadow-teal-500/30" style="height:30%"></div></div>
+          <div class="flex flex-col justify-end h-full"><div class="text-[12px] font-semibold mb-1.5">2</div><div class="rounded-2xl bg-gradient-to-t from-indigo-500 to-indigo-400" style="height:6%"></div></div>
+          <div class="flex flex-col justify-end h-full"><div class="text-[12px] font-semibold mb-1.5">1</div><div class="rounded-2xl bg-gradient-to-t from-amber-500 to-amber-400" style="height:5%"></div></div>
+          <div class="flex flex-col justify-end h-full"><div class="text-[12px] font-semibold mb-1.5">4</div><div class="rounded-2xl bg-gradient-to-t from-slate-800 to-slate-600" style="height:8%"></div></div>
+        </div>
+        <div class="grid grid-cols-5 gap-4 mt-2 text-[12px] text-slate-500 font-medium"><span>Applied</span><span>Screening</span><span>Interview</span><span>Offer</span><span>Hired</span></div>
+      </section>
+
+      <section class="glass rounded-3xl p-5">
+        <h2 class="font-bold text-[16px]">My tasks</h2>
+        <div class="mt-3 space-y-2.5">
+          <div class="flex items-center gap-3 p-3 rounded-2xl bg-white/70 ring-1 ring-white hover:shadow-md transition"><div class="w-10 h-10 rounded-full ring-fit p-[3px]" style="--p:86%"><div class="w-full h-full rounded-full bg-white text-[11px] font-bold flex items-center justify-center">86</div></div><div class="min-w-0"><div class="font-semibold truncate">Hariharan Rajendran</div><div class="text-[12px] text-slate-500">Scorecard · Data Architect</div></div><span class="ml-auto text-[11px] px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-medium">Feedback</span></div>
+          <div class="flex items-center gap-3 p-3 rounded-2xl bg-white/70 ring-1 ring-white hover:shadow-md transition"><div class="w-10 h-10 rounded-full ring-fit p-[3px]" style="--p:72%"><div class="w-full h-full rounded-full bg-white text-[11px] font-bold flex items-center justify-center">72</div></div><div class="min-w-0"><div class="font-semibold truncate">Deepraj Pathak</div><div class="text-[12px] text-slate-500">Scorecard · Tech Intern</div></div><span class="ml-auto text-[11px] px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-medium">Feedback</span></div>
+          <div class="flex items-center gap-3 p-3 rounded-2xl bg-white/70 ring-1 ring-white hover:shadow-md transition"><div class="w-10 h-10 rounded-full ring-fit p-[3px]" style="--p:91%"><div class="w-full h-full rounded-full bg-white text-[11px] font-bold flex items-center justify-center">91</div></div><div class="min-w-0"><div class="font-semibold truncate">Syed Ahmer</div><div class="text-[12px] text-slate-500">Offer · Marketing Ops</div></div><span class="ml-auto text-[11px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">4d left</span></div>
+        </div>
+      </section>
+    </div>
+  </div>
+</main>
+<script>lucide.createIcons();</script>
+</body></html>

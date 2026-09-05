@@ -198,7 +198,7 @@ export default function CareerPublicLayout({ children }) {
               {security?.terms_url && (
                 <a href={security.terms_url} target="_blank" rel="noreferrer" className="hover:text-foreground transition-colors" data-testid="career-footer-terms">Terms</a>
               )}
-              <span>Powered by Pinnacle ATS</span>
+              <span>Powered by HireFlow</span>
             </div>
           </div>
           {security?.recaptcha_enabled && (

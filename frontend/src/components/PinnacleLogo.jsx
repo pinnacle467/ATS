@@ -5,13 +5,16 @@ export default function PinnacleLogo({ size = 32, className = '' }) {
       style={{ height: size, width: size }}
       data-testid="pinnacle-logo"
     >
-      <span className="font-display font-extrabold text-primary-foreground" style={{ fontSize: size * 0.56, lineHeight: 1 }}>
-        P
-      </span>
-      <span
-        className="absolute rounded-full bg-[#f97316]"
-        style={{ width: size * 0.16, height: size * 0.16, right: size * 0.15, bottom: size * 0.17 }}
-      />
+      <svg viewBox="0 0 24 24" width={size * 0.6} height={size * 0.6} fill="none">
+        <path
+          d="M3.5 15.5c2.5-5.5 5.5-5.5 7.5-1.5s4.5 3.5 7-1.5"
+          stroke="white"
+          strokeWidth={2.3}
+          strokeLinecap="round"
+          fill="none"
+        />
+        <circle cx="18.5" cy="7.2" r="1.8" fill="white" />
+      </svg>
     </span>
   );
 }

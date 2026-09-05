@@ -102,11 +102,11 @@ export default function AccountPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Profile</CardTitle>
-          <CardDescription>Your account details as stored in Pinnacle ATS.</CardDescription>
+          <CardDescription>Your account details as stored in HireFlow.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex items-center gap-4">
-            <div className="h-16 w-16 rounded-full bg-emerald-100 text-emerald-700 text-xl font-semibold flex items-center justify-center">
+            <div className="h-16 w-16 rounded-full bg-primary/10 text-primary text-xl font-semibold flex items-center justify-center">
               {initials}
             </div>
             <div className="flex-1 min-w-0">

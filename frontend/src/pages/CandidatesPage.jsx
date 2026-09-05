@@ -35,11 +35,13 @@ export const SOURCES = [
 const STAGE_BADGE = {
   Applied: 'bg-sky-100 text-sky-800',
   Screening: 'bg-amber-100 text-amber-800',
-  Interview: 'bg-violet-100 text-violet-800',
+  Interview: 'bg-blue-100 text-blue-800',
   Offer: 'bg-emerald-100 text-emerald-800',
   Hired: 'bg-green-100 text-green-800',
   Rejected: 'bg-red-100 text-red-800',
 };
+
+export const initialsOf = (name) => (name || '?').split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase();
 
 export const StageBadge = ({ stage }) => (
   <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${STAGE_BADGE[stage] || 'bg-secondary text-foreground'}`}>{stage}</span>
@@ -133,6 +135,7 @@ export default function CandidatesPage() {
   const [kanbanRejectCategory, setKanbanRejectCategory] = useState('');
   const [kanbanRejectDetail, setKanbanRejectDetail] = useState('');
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+  const [pipelineCounts, setPipelineCounts] = useState([]);
 
   const isRecruiter = ['super_admin', 'admin', 'recruiter'].includes(user?.role);
   const isAdminPlus = ['super_admin', 'admin'].includes(user?.role);
@@ -293,6 +296,12 @@ export default function CandidatesPage() {
     const t = setTimeout(load, q ? 300 : 0);
     return () => clearTimeout(t);
   }, [load, q]);
+
+  // Quick stage-count chips shown above the filter bar — reuses the dashboard
+  // stats endpoint so no new backend work is needed for this visual summary.
+  useEffect(() => {
+    api.get('/dashboard/stats').then((r) => setPipelineCounts(r.data.pipeline || [])).catch(() => {});
+  }, []);
 
   const setViewPersist = (v) => {
     setView(v);
@@ -465,6 +474,29 @@ export default function CandidatesPage() {
         </div>
       </div>
 
+      {/* Quick stage-count chips */}
+      {pipelineCounts.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2" data-testid="candidates-stage-chips">
+          <button
+            onClick={() => { setFilters((f) => ({ ...f, stage: 'all' })); setPage(1); }}
+            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${filters.stage === 'all' ? 'bg-primary text-primary-foreground border-primary' : 'bg-card border-border text-muted-foreground hover:text-foreground'}`}
+            data-testid="stage-chip-all"
+          >
+            All Candidates <span className="tabular-nums opacity-80">{data.total}</span>
+          </button>
+          {pipelineCounts.map((p) => (
+            <button
+              key={p.stage}
+              onClick={() => { setFilters((f) => ({ ...f, stage: p.stage })); setPage(1); }}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${filters.stage === p.stage ? 'bg-primary text-primary-foreground border-primary' : 'bg-card border-border text-muted-foreground hover:text-foreground'}`}
+              data-testid={`stage-chip-${p.stage}`}
+            >
+              {p.stage} <span className="tabular-nums opacity-80">{p.count}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Filter bar */}
       <div className="flex flex-wrap items-center gap-2 bg-card border border-border rounded-xl p-3">
         <div className="relative flex-1 min-w-[200px]">
@@ -615,11 +647,18 @@ export default function CandidatesPage() {
                     </TableCell>
                   )}
                   <TableCell>
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-medium">{c.name}</span>
-                      <ResumeIndicator hasResume={!!c.resume_file_id} />
+                    <div className="flex items-center gap-2.5">
+                      <span className="h-8 w-8 rounded-full bg-primary/10 text-primary text-[11px] font-semibold flex items-center justify-center shrink-0">
+                        {initialsOf(c.name)}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-medium">{c.name}</span>
+                          <ResumeIndicator hasResume={!!c.resume_file_id} />
+                        </div>
+                        <div className="text-xs text-muted-foreground">{c.email || 'no email'}</div>
+                      </div>
                     </div>
-                    <div className="text-xs text-muted-foreground">{c.email || 'no email'}</div>
                   </TableCell>
                   <TableCell className="hidden sm:table-cell text-xs font-mono text-muted-foreground" data-testid={`candidate-code-${c.id}`}>{c.candidate_code || '—'}</TableCell>
                   <TableCell className="text-sm">

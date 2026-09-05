@@ -40,7 +40,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
-import { StageBadge, REJECTION_REASONS, SOURCES } from '@/pages/CandidatesPage';
+import { StageBadge, REJECTION_REASONS, SOURCES, initialsOf } from '@/pages/CandidatesPage';
 import ChangeLog from '@/components/ChangeLog';
 import { IndustryChips, IndustryTagEditor } from '@/components/IndustryPicker';
 import OfferPanel from '@/components/OfferPanel';
@@ -69,6 +69,30 @@ const CONFIDENCE_STYLE = {
   medium: { chip: 'bg-amber-100 text-amber-800 border-amber-300',       dot: 'bg-amber-500',   label: 'Medium confidence — please verify' },
   low:    { chip: 'bg-rose-100 text-rose-800 border-rose-300',          dot: 'bg-rose-500',    label: 'Low confidence — please verify' },
 };
+
+// Vertical stepper shown in the sidebar "Pipeline Status" card — purely
+// informational (the actual stage change control lives in the header select).
+function PipelineStepper({ stages, currentStage }) {
+  const list = stages.filter((s) => s !== 'Rejected');
+  const currentIdx = list.indexOf(currentStage);
+  return (
+    <div>
+      {list.map((s, i) => {
+        const passed = i <= currentIdx;
+        const isLast = i === list.length - 1;
+        return (
+          <div key={s} className="flex gap-3" data-testid={`pipeline-step-${s}`}>
+            <div className="flex flex-col items-center">
+              <span className={`h-3 w-3 rounded-full shrink-0 ${passed ? 'bg-primary' : 'bg-border'}`} />
+              {!isLast && <span className={`w-0.5 flex-1 ${i < currentIdx ? 'bg-primary' : 'bg-border'}`} style={{ minHeight: 22 }} />}
+            </div>
+            <span className={`text-xs pb-5 -mt-0.5 ${i === currentIdx ? 'font-semibold text-foreground' : 'text-muted-foreground'}`}>{s}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 /**
  * Small chip shown next to notice_period / expected_compensation on the profile
@@ -152,6 +176,7 @@ export default function CandidateProfilePage() {
   const [timeline, setTimeline] = useState([]);
   const [scorecards, setScorecards] = useState([]);
   const [stages, setStages] = useState([]);
+  const [upcomingInterviews, setUpcomingInterviews] = useState([]);
   const [note, setNote] = useState('');
   const [noteType, setNoteType] = useState('note');
   const [resumeUrl, setResumeUrl] = useState(null);
@@ -203,6 +228,9 @@ export default function CandidateProfilePage() {
       });
     api.get(`/candidates/${id}/timeline`).then((r) => setTimeline(r.data)).catch(() => {});
     api.get(`/candidates/${id}/scorecards`).then((r) => setScorecards(r.data)).catch(() => {});
+    api.get('/interviews', { params: { candidate_id: id, status: 'scheduled' } })
+      .then((r) => setUpcomingInterviews((r.data || []).filter((iv) => iv.scheduled_at && new Date(iv.scheduled_at) >= new Date())))
+      .catch(() => {});
   }, [id]);
 
   useEffect(() => {
@@ -547,6 +575,9 @@ export default function CandidateProfilePage() {
           <Button variant="ghost" size="icon" onClick={() => navigate('/candidates')} aria-label="Back" data-testid="candidate-back-button">
             <ArrowLeft className="h-5 w-5" />
           </Button>
+          <span className="h-12 w-12 rounded-full bg-primary/10 text-primary text-sm font-semibold flex items-center justify-center shrink-0 mt-0.5">
+            {initialsOf(cand.name)}
+          </span>
           <div>
             <div className="flex items-center gap-3 flex-wrap">
               {editingName ? (
@@ -674,10 +705,10 @@ export default function CandidateProfilePage() {
       )}
 
       <Tabs defaultValue="overview" className="w-full" data-testid="candidate-tabs">
-        <TabsList data-testid="candidate-tabs-list">
-          <TabsTrigger value="overview" data-testid="candidate-tab-overview">Overview</TabsTrigger>
-          <TabsTrigger value="feedback" data-testid="candidate-tab-feedback">Interviews & Feedback</TabsTrigger>
-          <TabsTrigger value="offer" data-testid="candidate-tab-offer">Offer</TabsTrigger>
+        <TabsList className="bg-transparent border-b border-border rounded-none p-0 h-auto justify-start gap-6" data-testid="candidate-tabs-list">
+          <TabsTrigger value="overview" className="rounded-none border-b-2 border-transparent px-1 pb-2.5 data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-primary data-[state=active]:text-primary" data-testid="candidate-tab-overview">Overview</TabsTrigger>
+          <TabsTrigger value="feedback" className="rounded-none border-b-2 border-transparent px-1 pb-2.5 data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-primary data-[state=active]:text-primary" data-testid="candidate-tab-feedback">Interviews & Feedback</TabsTrigger>
+          <TabsTrigger value="offer" className="rounded-none border-b-2 border-transparent px-1 pb-2.5 data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-primary data-[state=active]:text-primary" data-testid="candidate-tab-offer">Offer</TabsTrigger>
         </TabsList>
         <TabsContent value="overview" className="mt-4 space-y-5">
         <div className="grid lg:grid-cols-3 gap-5">
@@ -1041,8 +1072,43 @@ export default function CandidateProfilePage() {
           )}
         </div>
 
-        {/* Right: notes + timeline */}
+        {/* Right: pipeline status + upcoming interviews + notes + timeline */}
         <div className="space-y-5">
+          {stages.filter((s) => s !== 'Rejected').length > 1 && cand.status !== 'rejected' && (
+            <Card className="shadow-none" data-testid="candidate-pipeline-status">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold">Pipeline Status</CardTitle>
+                <p className="text-xs text-muted-foreground truncate">{cand.job?.title || 'No job assigned'}</p>
+              </CardHeader>
+              <CardContent>
+                <PipelineStepper stages={stages} currentStage={cand.stage} />
+              </CardContent>
+            </Card>
+          )}
+
+          <Card className="shadow-none" data-testid="candidate-upcoming-interviews">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold">Upcoming Interviews</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-1">
+              {upcomingInterviews.length === 0 && <p className="text-sm text-muted-foreground py-2 text-center">No upcoming interviews scheduled.</p>}
+              {upcomingInterviews.map((iv) => (
+                <div key={iv.id} className="flex items-center gap-3 px-2 py-2 rounded-lg" data-testid={`candidate-upcoming-interview-${iv.id}`}>
+                  <span className="h-8 w-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
+                    <CalendarDays className="h-4 w-4" />
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate capitalize">{(iv.type || 'Interview').replace('_', ' ')}</p>
+                    <p className="text-xs text-muted-foreground truncate">{(iv.interviewer_names || []).join(', ') || 'No interviewer assigned'}</p>
+                  </div>
+                  <span className="text-xs text-muted-foreground font-mono shrink-0 text-right">
+                    {new Date(iv.scheduled_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                  </span>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
           <Card className="shadow-none" data-testid="candidate-notes">
             <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Add Note / Log Email</CardTitle></CardHeader>
             <CardContent className="space-y-2">

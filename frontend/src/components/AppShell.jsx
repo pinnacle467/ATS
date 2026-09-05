@@ -67,6 +67,21 @@ const timeAgo = (iso) => {
   return `${Math.floor(s / 86400)}d ago`;
 };
 
+// Role alias table — mirror of backend/permissions.py, so super_admin
+// automatically satisfies nav items that require 'admin'/'recruiter'.
+const NAV_ROLE_ALIASES = {
+  super_admin: ['super_admin', 'admin', 'recruiter'],
+  admin: ['admin', 'recruiter'],
+  interview_panel: ['interview_panel', 'interviewer'],
+  vendor: ['vendor'],
+  recruiter: ['recruiter', 'admin'],
+  interviewer: ['interviewer', 'interview_panel'],
+};
+function roleSatisfiesNav(userRole, requiredRoles) {
+  const aliases = NAV_ROLE_ALIASES[userRole] || [userRole];
+  return requiredRoles.some((r) => aliases.includes(r));
+}
+
 export default function AppShell({ children }) {
   const { user, tenant, logout } = useAuth();
   const location = useLocation();
@@ -97,41 +112,27 @@ export default function AppShell({ children }) {
     .join('')
     .toUpperCase();
 
-// Role alias table — mirror of backend/permissions.py, so super_admin
-// automatically satisfies nav items that require 'admin'/'recruiter'.
-const NAV_ROLE_ALIASES = {
-  super_admin: ['super_admin', 'admin', 'recruiter'],
-  admin: ['admin', 'recruiter'],
-  interview_panel: ['interview_panel', 'interviewer'],
-  vendor: ['vendor'],
-  recruiter: ['recruiter', 'admin'],
-  interviewer: ['interviewer', 'interview_panel'],
-};
-function roleSatisfiesNav(userRole, requiredRoles) {
-  const aliases = NAV_ROLE_ALIASES[userRole] || [userRole];
-  return requiredRoles.some((r) => aliases.includes(r));
-}
-
   const navItems = NAV.filter((n) => !n.roles || roleSatisfiesNav(user?.role, n.roles));
   const impersonating = !!localStorage.getItem('ats_platform_token');
+  const roleLabel = (user?.role || '').replace('_', ' ');
 
   return (
     <div className="min-h-screen bg-background">
       {/* Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 w-[240px] bg-card border-r border-border flex flex-col transform transition-transform duration-200 lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-40 w-64 bg-sidebar border-r border-sidebar-border flex flex-col transform transition-transform duration-200 lg:translate-x-0 ${
           mobileOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        <div className="h-14 flex items-center gap-2 px-5 border-b border-border">
-          <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity" data-testid="app-logo-link">
+        <div className="h-16 flex items-center gap-2.5 px-5 border-b border-sidebar-border">
+          <Link to="/" className="flex items-center gap-2.5 hover:opacity-90 transition-opacity" data-testid="app-logo-link">
             {tenant?.branding?.logo_url ? (
               <img src={tenant.branding.logo_url} alt={tenant.name} className="h-8 w-8 rounded-lg object-cover shrink-0" />
             ) : (
               <PinnacleLogo size={32} />
             )}
-            <span className="font-display font-semibold text-lg tracking-tight truncate" data-testid="workspace-name">
-              {tenant?.branding?.company_name || tenant?.name || 'Pinnacle ATS'}
+            <span className="font-display font-semibold text-lg tracking-tight truncate text-white" data-testid="workspace-name">
+              {tenant?.branding?.company_name || tenant?.name || 'HireFlow'}
             </span>
           </Link>
         </div>
@@ -147,18 +148,18 @@ function roleSatisfiesNav(userRole, requiredRoles) {
                 onClick={() => setMobileOpen(false)}
                 className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                   active
-                    ? 'text-foreground bg-accent border-l-2 border-l-primary'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+                    ? 'bg-sidebar-active text-sidebar-foreground-active shadow-sm'
+                    : 'text-sidebar-foreground hover:text-sidebar-foreground-active hover:bg-sidebar-hover'
                 }`}
               >
-                <Icon className="h-4 w-4" />
+                <Icon className="h-4 w-4 shrink-0" />
                 {n.label}
               </Link>
             );
           })}
           {['super_admin', 'admin', 'recruiter'].includes(user?.role) && (
             <>
-              <div className="pt-4 pb-1 px-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+              <div className="pt-4 pb-1 px-3 text-[11px] font-semibold uppercase tracking-wider text-sidebar-muted">
                 Career Portal
               </div>
               {CAREER_NAV.map((n) => {
@@ -172,11 +173,11 @@ function roleSatisfiesNav(userRole, requiredRoles) {
                     onClick={() => setMobileOpen(false)}
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                       active
-                        ? 'text-foreground bg-accent border-l-2 border-l-primary'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+                        ? 'bg-sidebar-active text-sidebar-foreground-active shadow-sm'
+                        : 'text-sidebar-foreground hover:text-sidebar-foreground-active hover:bg-sidebar-hover'
                     }`}
                   >
-                    <Icon className="h-4 w-4" />
+                    <Icon className="h-4 w-4 shrink-0" />
                     {n.label}
                   </Link>
                 );
@@ -185,7 +186,7 @@ function roleSatisfiesNav(userRole, requiredRoles) {
           )}
         </nav>
         {['super_admin', 'admin', 'recruiter', 'vendor'].includes(user?.role) && (
-          <div className="p-3 border-t border-border">
+          <div className="p-3 border-t border-sidebar-border">
             <Button
               className="w-full"
               data-testid="sidebar-add-candidate-button"
@@ -205,7 +206,7 @@ function roleSatisfiesNav(userRole, requiredRoles) {
       )}
 
       {/* Main */}
-      <div className="lg:pl-[240px]">
+      <div className="lg:pl-64">
         {impersonating && (
           <div
             className="sticky top-0 z-30 bg-slate-900 text-slate-100 text-xs px-4 sm:px-6 py-2 flex items-center justify-between gap-3"
@@ -216,7 +217,7 @@ function roleSatisfiesNav(userRole, requiredRoles) {
               <strong>{tenant?.branding?.company_name || tenant?.name}</strong> as {user?.email}
             </span>
             <button
-              className="underline underline-offset-2 hover:text-teal-300 font-medium"
+              className="underline underline-offset-2 hover:text-blue-300 font-medium"
               data-testid="exit-impersonation-button"
               onClick={() => {
                 localStorage.removeItem('ats_token');
@@ -230,7 +231,7 @@ function roleSatisfiesNav(userRole, requiredRoles) {
           </div>
         )}
         {/* Topbar */}
-        <header className="sticky top-0 z-20 h-14 bg-card border-b border-border flex items-center gap-3 px-4 sm:px-6">
+        <header className="sticky top-0 z-20 h-16 bg-card border-b border-border flex items-center gap-3 px-4 sm:px-6">
           <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setMobileOpen(true)} aria-label="Open menu">
             <Menu className="h-5 w-5" />
           </Button>
@@ -246,11 +247,14 @@ function roleSatisfiesNav(userRole, requiredRoles) {
               data-testid="topbar-search-input"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search candidates..."
-              className="pl-9 h-9 bg-background"
+              placeholder="Search candidates, skills, locations..."
+              className="pl-9 pr-14 h-9 bg-secondary/60 border-transparent focus-visible:bg-background rounded-full"
             />
+            <kbd className="hidden sm:flex absolute right-2 top-1/2 -translate-y-1/2 items-center gap-0.5 rounded-md border border-border bg-card px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground">
+              ⌘K
+            </kbd>
           </form>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex items-center gap-1">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="relative" data-testid="notifications-bell" aria-label="Notifications">
@@ -294,10 +298,14 @@ function roleSatisfiesNav(userRole, requiredRoles) {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
-                  className="flex items-center gap-2 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="flex items-center gap-2.5 rounded-full pl-2 pr-1 py-1 hover:bg-secondary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   data-testid="user-menu-trigger"
                 >
-                  <span className="h-8 w-8 rounded-full bg-accent text-accent-foreground text-xs font-semibold flex items-center justify-center">
+                  <span className="hidden sm:flex flex-col items-end leading-tight">
+                    <span className="text-sm font-medium">{user?.name}</span>
+                    <span className="text-xs text-muted-foreground capitalize">{roleLabel}</span>
+                  </span>
+                  <span className="h-8 w-8 rounded-full bg-primary text-primary-foreground text-xs font-semibold flex items-center justify-center shrink-0">
                     {initials}
                   </span>
                 </button>

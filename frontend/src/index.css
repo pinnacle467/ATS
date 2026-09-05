@@ -23,25 +23,32 @@ code {
         --card-foreground: 222 47% 11%;
         --popover: 0 0% 100%;
         --popover-foreground: 222 47% 11%;
-        --primary: 158 64% 34%;
+        --primary: 221 83% 53%;
         --primary-foreground: 0 0% 100%;
-        --secondary: 210 16% 94%;
+        --secondary: 220 20% 95%;
         --secondary-foreground: 222 47% 11%;
-        --muted: 210 16% 94%;
-        --muted-foreground: 215 16% 40%;
-        --accent: 156 35% 92%;
-        --accent-foreground: 166 72% 18%;
+        --muted: 220 20% 95%;
+        --muted-foreground: 215 16% 42%;
+        --accent: 217 91% 95%;
+        --accent-foreground: 221 83% 40%;
         --destructive: 0 72% 51%;
         --destructive-foreground: 0 0% 100%;
-        --border: 214 18% 88%;
-        --input: 214 18% 88%;
-        --ring: 158 64% 34%;
-        --radius: 0.75rem;
-        --chart-1: 158 64% 34%;
-        --chart-2: 199 78% 40%;
+        --border: 220 16% 88%;
+        --input: 220 16% 88%;
+        --ring: 221 83% 53%;
+        --radius: 0.625rem;
+        --chart-1: 221 83% 53%;
+        --chart-2: 199 89% 48%;
         --chart-3: 43 96% 56%;
         --chart-4: 262 52% 55%;
         --chart-5: 0 72% 51%;
+        --sidebar-background: 222 47% 9%;
+        --sidebar-foreground: 213 20% 78%;
+        --sidebar-foreground-active: 0 0% 100%;
+        --sidebar-muted: 217 19% 55%;
+        --sidebar-hover: 222 35% 15%;
+        --sidebar-active: 221 83% 53%;
+        --sidebar-border: 222 30% 17%;
     }
 }
 

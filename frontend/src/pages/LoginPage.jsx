@@ -51,7 +51,7 @@ export default function LoginPage() {
   };
 
   const brand = workspace?.branding;
-  const companyName = brand?.company_name || workspace?.name || 'Pinnacle ATS';
+  const companyName = brand?.company_name || workspace?.name || 'HireFlow';
   const suspended = workspace?.status === 'suspended';
 
   return (
@@ -67,7 +67,7 @@ export default function LoginPage() {
             <div>
               <div className="font-display font-bold text-xl tracking-tight" data-testid="tenant-name">{companyName}</div>
               <div className="text-xs text-muted-foreground">
-                {brand?.tagline || 'Applicant tracking, powered by Pinnacle'}
+                {brand?.tagline || 'Applicant tracking, powered by HireFlow'}
               </div>
             </div>
           </div>
@@ -149,13 +149,13 @@ export default function LoginPage() {
         </div>
       </div>
 
-      <div className="hidden lg:block relative bg-emerald-950 overflow-hidden">
+      <div className="hidden lg:block relative bg-slate-950 overflow-hidden">
         <img
-          src="https://images.unsplash.com/photo-1708549566274-638eb2d2108b?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzV8MHwxfHNlYXJjaHwyfHxlbWVyYWxkJTIwZ3JhZGllbnR8ZW58MHx8fGdyZWVufDE3ODQ3NjEwMjd8MA&ixlib=rb-4.1.0&q=85"
-          alt="Abstract emerald gradient"
+          src="https://images.unsplash.com/photo-1620121692029-d088224ddc74?crop=entropy&cs=srgb&fm=jpg&q=85"
+          alt="Abstract blue gradient"
           className="absolute inset-0 h-full w-full object-cover"
         />
-        <div className="absolute inset-0 bg-gradient-to-br from-emerald-950/20 via-transparent to-emerald-950/40" />
+        <div className="absolute inset-0 bg-gradient-to-br from-blue-950/30 via-transparent to-blue-950/50" />
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
 
         <div className="absolute inset-0 flex flex-col justify-center px-12">
@@ -167,9 +167,9 @@ export default function LoginPage() {
           </p>
           <div className="mt-6 flex items-center gap-4 text-xs text-white/70">
             <div className="flex items-center gap-1.5">
-              <div className="h-8 w-8 rounded-full bg-emerald-500/90 border-2 border-white/30" />
-              <div className="h-8 w-8 rounded-full bg-emerald-400/90 border-2 border-white/30 -ml-4" />
-              <div className="h-8 w-8 rounded-full bg-emerald-300/90 border-2 border-white/30 -ml-4" />
+              <div className="h-8 w-8 rounded-full bg-blue-500/90 border-2 border-white/30" />
+              <div className="h-8 w-8 rounded-full bg-blue-400/90 border-2 border-white/30 -ml-4" />
+              <div className="h-8 w-8 rounded-full bg-blue-300/90 border-2 border-white/30 -ml-4" />
             </div>
             <span>Trusted by hiring teams shipping roles this week</span>
           </div>

@@ -91,7 +91,7 @@ export default function ResetPasswordPage() {
           <Link to="/login" className="flex items-center gap-2 mb-8">
             <PinnacleLogo size={40} />
             <div>
-              <div className="font-display font-bold text-xl tracking-tight">Pinnacle ATS</div>
+              <div className="font-display font-bold text-xl tracking-tight">HireFlow</div>
               <div className="text-xs text-muted-foreground">Lightweight applicant tracking</div>
             </div>
           </Link>
@@ -194,13 +194,13 @@ export default function ResetPasswordPage() {
         </div>
       </div>
 
-      <div className="hidden lg:block relative bg-emerald-950 overflow-hidden">
+      <div className="hidden lg:block relative bg-slate-950 overflow-hidden">
         <img
-          src="https://images.unsplash.com/photo-1708549566274-638eb2d2108b?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzV8MHwxfHNlYXJjaHwyfHxlbWVyYWxkJTIwZ3JhZGllbnR8ZW58MHx8fGdyZWVufDE3ODQ3NjEwMjd8MA&ixlib=rb-4.1.0&q=85"
-          alt="Abstract emerald gradient"
+          src="https://images.unsplash.com/photo-1620121692029-d088224ddc74?crop=entropy&cs=srgb&fm=jpg&q=85"
+          alt="Abstract blue gradient"
           className="absolute inset-0 h-full w-full object-cover"
         />
-        <div className="absolute inset-0 bg-gradient-to-br from-emerald-950/20 via-transparent to-emerald-950/40" />
+        <div className="absolute inset-0 bg-gradient-to-br from-blue-950/30 via-transparent to-blue-950/50" />
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
         <div className="absolute inset-0 flex flex-col justify-center px-12">
           <p className="font-display text-3xl xl:text-4xl font-semibold text-white leading-tight tracking-tight">

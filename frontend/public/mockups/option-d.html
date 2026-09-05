@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Option D — Enterprise Dense</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  body{font-family:'IBM Plex Sans',ui-sans-serif,system-ui;background:#F6F7F9;color:#111827;-webkit-font-smoothing:antialiased;font-size:13px}
+  .mono{font-family:'IBM Plex Mono',ui-monospace,monospace}
+  th{position:sticky;top:0;background:#F9FAFB;z-index:1}
+  tr.sel{background:#ECFDF5}
+  tbody tr:hover{background:#F3F4F6}
+  .pill{font-size:11px;padding:1px 7px;border-radius:4px;font-weight:500;white-space:nowrap}
+</style>
+</head>
+<body class="h-screen overflow-hidden flex">
+<!-- Icon rail -->
+<aside class="w-12 shrink-0 bg-[#111827] flex flex-col items-center py-2 gap-1 text-gray-400">
+  <div class="w-8 h-8 rounded bg-emerald-500 text-white font-semibold flex items-center justify-center mb-2 text-xs">P</div>
+  <a class="w-9 h-9 rounded flex items-center justify-center hover:bg-white/10"><i data-lucide="layout-dashboard" class="w-[18px] h-[18px]"></i></a>
+  <a class="w-9 h-9 rounded flex items-center justify-center bg-white/15 text-white"><i data-lucide="users" class="w-[18px] h-[18px]"></i></a>
+  <a class="w-9 h-9 rounded flex items-center justify-center hover:bg-white/10"><i data-lucide="briefcase" class="w-[18px] h-[18px]"></i></a>
+  <a class="w-9 h-9 rounded flex items-center justify-center hover:bg-white/10"><i data-lucide="calendar" class="w-[18px] h-[18px]"></i></a>
+  <a class="w-9 h-9 rounded flex items-center justify-center hover:bg-white/10"><i data-lucide="file-signature" class="w-[18px] h-[18px]"></i></a>
+  <a class="w-9 h-9 rounded flex items-center justify-center hover:bg-white/10"><i data-lucide="globe" class="w-[18px] h-[18px]"></i></a>
+  <a class="w-9 h-9 rounded flex items-center justify-center hover:bg-white/10"><i data-lucide="settings" class="w-[18px] h-[18px]"></i></a>
+  <div class="mt-auto w-7 h-7 rounded-full bg-gray-600 text-white text-[10px] flex items-center justify-center">AK</div>
+</aside>
+
+<!-- Contextual panel: saved views -->
+<aside class="w-[200px] shrink-0 bg-white border-r border-gray-200 flex flex-col">
+  <div class="h-10 px-3 flex items-center border-b border-gray-200 font-semibold">Candidates</div>
+  <div class="p-2 text-[12.5px]">
+    <div class="px-2 py-1 text-[10.5px] uppercase tracking-wider text-gray-400 font-medium">Views</div>
+    <a class="flex items-center gap-2 h-7 px-2 rounded bg-emerald-50 text-emerald-800 font-medium"><i data-lucide="list" class="w-3.5 h-3.5"></i>All candidates<span class="ml-auto mono text-[11px]">400</span></a>
+    <a class="flex items-center gap-2 h-7 px-2 rounded hover:bg-gray-100 text-gray-700"><i data-lucide="star" class="w-3.5 h-3.5"></i>Best fit ≥ 80<span class="ml-auto mono text-[11px] text-gray-400">61</span></a>
+    <a class="flex items-center gap-2 h-7 px-2 rounded hover:bg-gray-100 text-gray-700"><i data-lucide="clock" class="w-3.5 h-3.5"></i>Stalled &gt; 14d<span class="ml-auto mono text-[11px] text-gray-400">27</span></a>
+    <a class="flex items-center gap-2 h-7 px-2 rounded hover:bg-gray-100 text-gray-700"><i data-lucide="user-check" class="w-3.5 h-3.5"></i>Assigned to me<span class="ml-auto mono text-[11px] text-gray-400">18</span></a>
+    <div class="px-2 py-1 mt-3 text-[10.5px] uppercase tracking-wider text-gray-400 font-medium">By job</div>
+    <a class="flex items-center gap-2 h-7 px-2 rounded hover:bg-gray-100 text-gray-700 truncate">Data Architect (SF)<span class="ml-auto mono text-[11px] text-gray-400">72</span></a>
+    <a class="flex items-center gap-2 h-7 px-2 rounded hover:bg-gray-100 text-gray-700 truncate">Tech Intern (US)<span class="ml-auto mono text-[11px] text-gray-400">54</span></a>
+    <a class="flex items-center gap-2 h-7 px-2 rounded hover:bg-gray-100 text-gray-700 truncate">Marketing Ops (India)<span class="ml-auto mono text-[11px] text-gray-400">41</span></a>
+    <a class="flex items-center gap-2 h-7 px-2 rounded hover:bg-gray-100 text-gray-700 truncate">Sr. Data Engineer<span class="ml-auto mono text-[11px] text-gray-400">38</span></a>
+  </div>
+</aside>
+
+<main class="flex-1 min-w-0 flex flex-col">
+  <!-- Toolbar -->
+  <div class="h-10 bg-white border-b border-gray-200 px-3 flex items-center gap-2">
+    <div class="h-7 w-64 rounded border border-gray-300 px-2 flex items-center gap-1.5 text-gray-400 text-[12.5px]"><i data-lucide="search" class="w-3.5 h-3.5"></i>Filter name, email, skill…</div>
+    <button class="h-7 px-2 rounded border border-gray-300 bg-white flex items-center gap-1 text-[12.5px]"><i data-lucide="filter" class="w-3.5 h-3.5"></i>Stage: Any</button>
+    <button class="h-7 px-2 rounded border border-gray-300 bg-white flex items-center gap-1 text-[12.5px]"><i data-lucide="arrow-up-down" class="w-3.5 h-3.5"></i>Sort: Fit ↓</button>
+    <button class="h-7 px-2 rounded border border-gray-300 bg-white flex items-center gap-1 text-[12.5px]"><i data-lucide="columns-3" class="w-3.5 h-3.5"></i>Columns</button>
+    <span class="text-gray-400 text-[12px] ml-1">400 rows · 3 selected</span>
+    <div class="ml-auto flex items-center gap-1.5">
+      <button class="h-7 px-2 rounded border border-gray-300 bg-white text-[12.5px]">Move stage</button>
+      <button class="h-7 px-2 rounded border border-gray-300 bg-white text-[12.5px]">Tag</button>
+      <button class="h-7 px-2 rounded border border-gray-300 bg-white text-[12.5px]">Export CSV</button>
+      <button class="h-7 px-2.5 rounded bg-emerald-600 text-white font-medium text-[12.5px] flex items-center gap-1"><i data-lucide="plus" class="w-3.5 h-3.5"></i>Add</button>
+    </div>
+  </div>
+
+  <!-- KPI strip -->
+  <div class="h-9 bg-white border-b border-gray-200 px-3 flex items-center gap-6 text-[12px] text-gray-600">
+    <span>Applied <b class="text-gray-900 mono">103</b></span><span>Screening <b class="text-gray-900 mono">32</b></span><span>Interview <b class="text-gray-900 mono">2</b></span><span>Offer <b class="text-gray-900 mono">1</b></span><span>Hired <b class="text-gray-900 mono">4</b></span><span class="text-gray-300">|</span><span>Avg fit <b class="text-emerald-700 mono">74</b></span><span>Avg time-to-hire <b class="text-gray-900 mono">11.5d</b></span>
+  </div>
+
+  <div class="flex-1 flex min-h-0">
+    <!-- Data grid -->
+    <div class="flex-1 min-w-0 overflow-auto bg-white">
+      <table class="w-full border-collapse text-[12.5px]">
+        <thead class="text-[11px] uppercase tracking-wide text-gray-500">
+          <tr class="border-b border-gray-200">
+            <th class="w-8 px-2 py-1.5 text-left border-r border-gray-200"><input type="checkbox" class="accent-emerald-600"/></th>
+            <th class="px-2 py-1.5 text-left font-medium border-r border-gray-200">Name</th>
+            <th class="px-2 py-1.5 text-left font-medium border-r border-gray-200">Job</th>
+            <th class="px-2 py-1.5 text-left font-medium border-r border-gray-200">Stage</th>
+            <th class="px-2 py-1.5 text-right font-medium border-r border-gray-200">Fit</th>
+            <th class="px-2 py-1.5 text-left font-medium border-r border-gray-200">Skills</th>
+            <th class="px-2 py-1.5 text-left font-medium border-r border-gray-200">Location</th>
+            <th class="px-2 py-1.5 text-left font-medium border-r border-gray-200">Owner</th>
+            <th class="px-2 py-1.5 text-left font-medium border-r border-gray-200">Source</th>
+            <th class="px-2 py-1.5 text-right font-medium">Updated</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          <tr class="sel"><td class="px-2 py-1.5 border-r border-gray-100"><input type="checkbox" checked class="accent-emerald-600"/></td><td class="px-2 py-1.5 font-medium border-r border-gray-100">Syed Ahmer</td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Marketing Ops (India)</td><td class="px-2 py-1.5 border-r border-gray-100"><span class="pill bg-amber-100 text-amber-800">Offer</span></td><td class="px-2 py-1.5 text-right mono border-r border-gray-100"><span class="pill bg-emerald-100 text-emerald-800">91</span></td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100 truncate max-w-[180px]">HubSpot, SQL, Marketo</td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Bengaluru</td><td class="px-2 py-1.5 border-r border-gray-100">AK</td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Referral</td><td class="px-2 py-1.5 text-right mono text-gray-500">2h</td></tr>
+          <tr class="sel"><td class="px-2 py-1.5 border-r border-gray-100"><input type="checkbox" checked class="accent-emerald-600"/></td><td class="px-2 py-1.5 font-medium border-r border-gray-100">Hariharan Rajendran</td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Data Architect (SF)</td><td class="px-2 py-1.5 border-r border-gray-100"><span class="pill bg-indigo-100 text-indigo-800">Interview 1</span></td><td class="px-2 py-1.5 text-right border-r border-gray-100"><span class="pill bg-emerald-100 text-emerald-800 mono">86</span></td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Snowflake, dbt, Airflow</td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Chennai</td><td class="px-2 py-1.5 border-r border-gray-100">AK</td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">LinkedIn</td><td class="px-2 py-1.5 text-right mono text-gray-500">1d</td></tr>
+          <tr class="sel"><td class="px-2 py-1.5 border-r border-gray-100"><input type="checkbox" checked class="accent-emerald-600"/></td><td class="px-2 py-1.5 font-medium border-r border-gray-100">Deepraj Pathak</td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Tech Intern (US)</td><td class="px-2 py-1.5 border-r border-gray-100"><span class="pill bg-indigo-100 text-indigo-800">Interview 2</span></td><td class="px-2 py-1.5 text-right border-r border-gray-100"><span class="pill bg-emerald-100 text-emerald-800 mono">72</span></td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Python, React, SQL</td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Austin, TX</td><td class="px-2 py-1.5 border-r border-gray-100">AK</td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Careers</td><td class="px-2 py-1.5 text-right mono text-gray-500">1d</td></tr>
+          <tr><td class="px-2 py-1.5 border-r border-gray-100"><input type="checkbox" class="accent-emerald-600"/></td><td class="px-2 py-1.5 font-medium border-r border-gray-100">John Q Applicant</td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Data Architect (SF)</td><td class="px-2 py-1.5 border-r border-gray-100"><span class="pill bg-gray-100 text-gray-700">Applied</span></td><td class="px-2 py-1.5 text-right border-r border-gray-100"><span class="pill bg-amber-100 text-amber-800 mono">64</span></td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Spark, Scala</td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">San Francisco</td><td class="px-2 py-1.5 border-r border-gray-100">—</td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Webhook</td><td class="px-2 py-1.5 text-right mono text-gray-500">23d</td></tr>
+          <tr><td class="px-2 py-1.5 border-r border-gray-100"><input type="checkbox" class="accent-emerald-600"/></td><td class="px-2 py-1.5 font-medium border-r border-gray-100">Jordan Sim Tester</td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Tech Intern (US)</td><td class="px-2 py-1.5 border-r border-gray-100"><span class="pill bg-gray-100 text-gray-700">Applied</span></td><td class="px-2 py-1.5 text-right border-r border-gray-100"><span class="pill bg-red-100 text-red-800 mono">41</span></td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Java</td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Remote</td><td class="px-2 py-1.5 border-r border-gray-100">—</td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Sandbox</td><td class="px-2 py-1.5 text-right mono text-gray-500">23d</td></tr>
+          <tr><td class="px-2 py-1.5 border-r border-gray-100"><input type="checkbox" class="accent-emerald-600"/></td><td class="px-2 py-1.5 font-medium border-r border-gray-100">Priya Natarajan</td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Sr. Data Engineer</td><td class="px-2 py-1.5 border-r border-gray-100"><span class="pill bg-sky-100 text-sky-800">Screening</span></td><td class="px-2 py-1.5 text-right border-r border-gray-100"><span class="pill bg-emerald-100 text-emerald-800 mono">83</span></td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Kafka, Python, GCP</td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Hyderabad</td><td class="px-2 py-1.5 border-r border-gray-100">AK</td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Naukri</td><td class="px-2 py-1.5 text-right mono text-gray-500">3d</td></tr>
+          <tr><td class="px-2 py-1.5 border-r border-gray-100"><input type="checkbox" class="accent-emerald-600"/></td><td class="px-2 py-1.5 font-medium border-r border-gray-100">Marcus Lee</td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Data Architect (SF)</td><td class="px-2 py-1.5 border-r border-gray-100"><span class="pill bg-sky-100 text-sky-800">Screening</span></td><td class="px-2 py-1.5 text-right border-r border-gray-100"><span class="pill bg-emerald-100 text-emerald-800 mono">79</span></td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Redshift, Terraform</td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Seattle</td><td class="px-2 py-1.5 border-r border-gray-100">AK</td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Indeed</td><td class="px-2 py-1.5 text-right mono text-gray-500">4d</td></tr>
+          <tr><td class="px-2 py-1.5 border-r border-gray-100"><input type="checkbox" class="accent-emerald-600"/></td><td class="px-2 py-1.5 font-medium border-r border-gray-100">Ananya Iyer</td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Marketing Ops (India)</td><td class="px-2 py-1.5 border-r border-gray-100"><span class="pill bg-gray-100 text-gray-700">Applied</span></td><td class="px-2 py-1.5 text-right border-r border-gray-100"><span class="pill bg-amber-100 text-amber-800 mono">58</span></td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Salesforce, Excel</td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Pune</td><td class="px-2 py-1.5 border-r border-gray-100">—</td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Careers</td><td class="px-2 py-1.5 text-right mono text-gray-500">5d</td></tr>
+          <tr><td class="px-2 py-1.5 border-r border-gray-100"><input type="checkbox" class="accent-emerald-600"/></td><td class="px-2 py-1.5 font-medium border-r border-gray-100">Rahul Verma</td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Sr. Data Engineer</td><td class="px-2 py-1.5 border-r border-gray-100"><span class="pill bg-red-100 text-red-800">Rejected</span></td><td class="px-2 py-1.5 text-right border-r border-gray-100"><span class="pill bg-red-100 text-red-800 mono">37</span></td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">PHP, MySQL</td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Delhi</td><td class="px-2 py-1.5 border-r border-gray-100">AK</td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Naukri</td><td class="px-2 py-1.5 text-right mono text-gray-500">6d</td></tr>
+          <tr><td class="px-2 py-1.5 border-r border-gray-100"><input type="checkbox" class="accent-emerald-600"/></td><td class="px-2 py-1.5 font-medium border-r border-gray-100">Elena Petrova</td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Tech Intern (US)</td><td class="px-2 py-1.5 border-r border-gray-100"><span class="pill bg-emerald-100 text-emerald-800">Hired</span></td><td class="px-2 py-1.5 text-right border-r border-gray-100"><span class="pill bg-emerald-100 text-emerald-800 mono">88</span></td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Go, Kubernetes</td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Boston</td><td class="px-2 py-1.5 border-r border-gray-100">AK</td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Referral</td><td class="px-2 py-1.5 text-right mono text-gray-500">8d</td></tr>
+          <tr><td class="px-2 py-1.5 border-r border-gray-100"><input type="checkbox" class="accent-emerald-600"/></td><td class="px-2 py-1.5 font-medium border-r border-gray-100">Tom Nguyen</td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Data Architect (SF)</td><td class="px-2 py-1.5 border-r border-gray-100"><span class="pill bg-gray-100 text-gray-700">Applied</span></td><td class="px-2 py-1.5 text-right border-r border-gray-100"><span class="pill bg-amber-100 text-amber-800 mono">66</span></td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">BigQuery, Looker</td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Denver</td><td class="px-2 py-1.5 border-r border-gray-100">—</td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">LinkedIn</td><td class="px-2 py-1.5 text-right mono text-gray-500">9d</td></tr>
+          <tr><td class="px-2 py-1.5 border-r border-gray-100"><input type="checkbox" class="accent-emerald-600"/></td><td class="px-2 py-1.5 font-medium border-r border-gray-100">Kavya Menon</td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Marketing Ops (India)</td><td class="px-2 py-1.5 border-r border-gray-100"><span class="pill bg-sky-100 text-sky-800">Screening</span></td><td class="px-2 py-1.5 text-right border-r border-gray-100"><span class="pill bg-emerald-100 text-emerald-800 mono">77</span></td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Marketo, GA4</td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Kochi</td><td class="px-2 py-1.5 border-r border-gray-100">AK</td><td class="px-2 py-1.5 text-gray-600 border-r border-gray-100">Careers</td><td class="px-2 py-1.5 text-right mono text-gray-500">11d</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Split-pane detail -->
+    <aside class="w-[380px] shrink-0 border-l border-gray-200 bg-white flex flex-col">
+      <div class="p-4 border-b border-gray-200">
+        <div class="flex items-start gap-3"><div class="w-10 h-10 rounded bg-emerald-100 text-emerald-800 font-semibold flex items-center justify-center">SA</div><div class="min-w-0"><div class="font-semibold text-[15px]">Syed Ahmer</div><div class="text-gray-500 text-[12px]">syed.ahmer@example.com · Bengaluru</div></div><span class="ml-auto pill bg-emerald-100 text-emerald-800 mono">Fit 91</span></div>
+        <div class="mt-3 flex gap-1.5"><button class="h-7 px-2.5 rounded bg-emerald-600 text-white text-[12px] font-medium">Move stage</button><button class="h-7 px-2.5 rounded border border-gray-300 text-[12px]">Schedule</button><button class="h-7 px-2.5 rounded border border-gray-300 text-[12px]">Email</button><button class="h-7 w-7 rounded border border-gray-300 flex items-center justify-center"><i data-lucide="more-horizontal" class="w-3.5 h-3.5"></i></button></div>
+      </div>
+      <div class="flex border-b border-gray-200 text-[12px] px-2"><a class="px-2.5 py-2 border-b-2 border-emerald-600 font-medium">Overview</a><a class="px-2.5 py-2 text-gray-500">Resume</a><a class="px-2.5 py-2 text-gray-500">Feedback</a><a class="px-2.5 py-2 text-gray-500">Notes</a><a class="px-2.5 py-2 text-gray-500">Timeline</a></div>
+      <div class="p-4 space-y-4 text-[12.5px] overflow-auto">
+        <dl class="grid grid-cols-[110px_1fr] gap-y-1.5"><dt class="text-gray-500">Job</dt><dd>Marketing Operations Specialist (India)</dd><dt class="text-gray-500">Stage</dt><dd><span class="pill bg-amber-100 text-amber-800">Offer</span> · sent 3d ago</dd><dt class="text-gray-500">Owner</dt><dd>Abhijeet Kang</dd><dt class="text-gray-500">Source</dt><dd>Referral</dd><dt class="text-gray-500">Experience</dt><dd>6 yrs · HubSpot, Marketo, SQL</dd><dt class="text-gray-500">Industry</dt><dd>SaaS / B2B</dd></dl>
+        <div><div class="font-medium mb-1.5">AI summary</div><p class="text-gray-600 leading-relaxed">Strong RevOps background with hands-on Marketo + HubSpot migrations. Owned attribution modelling at a 200-person SaaS. Gap: limited people-management experience.</p></div>
+        <div><div class="font-medium mb-1.5">Round feedback</div><div class="space-y-1.5"><div class="flex items-center gap-2"><span class="pill bg-emerald-100 text-emerald-800">Recommend</span><span class="text-gray-600">R1 · Abhijeet · 45m</span></div><div class="flex items-center gap-2"><span class="pill bg-emerald-100 text-emerald-800">Recommend</span><span class="text-gray-600">R2 · Panel · 60m</span></div></div></div>
+      </div>
+    </aside>
+  </div>
+</main>
+<script>lucide.createIcons();</script>
+</body></html>
